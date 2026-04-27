@@ -81,3 +81,13 @@ export function isEncrypted(value: string): boolean {
   // Check if all parts are valid hex
   return parts.every((p) => /^[0-9a-f]+$/i.test(p));
 }
+/**
+ * Smart decrypt: If the value is encrypted, decrypt it.
+ * If decryption fails or it's not encrypted, return the original value.
+ * This ensures the app doesn't break for existing plaintext tokens.
+ */
+export function decryptOrPlain(value: string): string {
+  if (!isEncrypted(value)) return value;
+  const decrypted = decrypt(value);
+  return decrypted ?? value;
+}
