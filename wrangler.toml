@@ -6,7 +6,4 @@ compatibility_flags = ["nodejs_compat"]
 # You can add public variables here, but keep secrets in the Cloudflare Dashboard!
 NEXT_PUBLIC_APP_URL = "https://suryaai.in"
 
-# Configuration for Next.js on Pages
-[[routes]]
-pattern = "/*"
-script = "_worker.js"
+
