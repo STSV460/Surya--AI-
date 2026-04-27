@@ -20,7 +20,7 @@ export async function DELETE(
 
   if (!result.document) return new Response("Not found", { status: 404 });
 
-  await db.knowledgeFiles("deleteOne", { filter: { id: fileId } });
+  await db.knowledgeFiles("deleteOne", { filter: { id: fileId, projectId, userId } });
   invalidateCache(`file:${fileId}`);
   invalidateCache(`project:${projectId}`);
 

@@ -4,7 +4,7 @@ import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { ChevronDown, ChevronRight, Brain, Code2, FileText, Play, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Brain, Code2, FileText, Play, Sparkles, Copy, Check } from "lucide-react";
 import { CitationCard } from "./CitationCard";
 import { StreamingText } from "./StreamingText";
 import type { Message, ArtifactType } from "@/types/chat";
@@ -15,7 +15,28 @@ const ARTIFACT_ICONS = {
   code: Code2,
   document: FileText,
   interactive: Play,
+  image: FileText,
+  video: Play,
 } as const;
+
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy() {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/6 hover:bg-white/12 text-gray-400 hover:text-white text-[11px] transition-colors"
+    >
+      {copied ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
 
 const ArtifactChip = memo(function ArtifactChip({ artifact }: { artifact: ArtifactType }) {
   const { setArtifactPanel } = useUIStore();
@@ -54,14 +75,22 @@ export const MessageBubble = memo(function MessageBubble({
   const displayContent = isStreaming ? streamingContent : message.content;
 
   return (
-    <div className={cn("flex w-full mb-4", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full mb-7 animate-fade-in", isUser ? "justify-end" : "justify-start")}>
+      {!isUser && (
+        <div
+          className="shrink-0 mr-3 mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shadow-sm"
+          style={{ background: "linear-gradient(135deg, #1A73E8, #4FC3F7)" }}
+        >
+          <Sparkles size={14} className="text-white" />
+        </div>
+      )}
       <div
         className={cn(
-          "max-w-[85%] rounded-2xl px-4 py-3",
           isUser
-            ? "bg-surface-2 text-white rounded-br-sm"
-            : "text-gray-100 rounded-bl-sm"
+            ? "max-w-[80%] px-4 py-2.5 bg-surface-2 text-foreground"
+            : "max-w-3xl flex-1 text-foreground leading-relaxed"
         )}
+        style={isUser ? { borderRadius: "18px 18px 4px 18px" } : undefined}
       >
         {/* Thinking block */}
         {message.thinking && (
@@ -84,9 +113,9 @@ export const MessageBubble = memo(function MessageBubble({
 
         {/* Main content */}
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p>
+          <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{displayContent}</p>
         ) : (
-          <div className="prose prose-sm prose-invert max-w-none">
+          <div className="prose prose-invert max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-transparent prose-pre:p-0">
             {isStreaming ? (
               <StreamingText content={displayContent} isStreaming={isStreaming} />
             ) : (
@@ -96,19 +125,26 @@ export const MessageBubble = memo(function MessageBubble({
                 components={{
                   code({ className, children, ...props }) {
                     const isBlock = className?.includes("language-");
+                    const lang = className?.replace("language-", "") ?? "";
+                    const codeStr = String(children).replace(/\n$/, "");
                     return isBlock ? (
-                      <code
-                        className={cn(
-                          "block bg-surface-2 rounded-lg p-3 text-xs overflow-x-auto",
-                          className
-                        )}
-                        {...props}
-                      >
-                        {children}
-                      </code>
+                      <div className="rounded-[10px] overflow-hidden border border-white/8 my-2.5 bg-surface-2 not-prose">
+                        <div className="flex items-center justify-between px-3.5 py-1.5 bg-surface-3 border-b border-white/8">
+                          <span className="font-mono text-[11px] text-gray-500">{lang || "code"}</span>
+                          <CopyCodeButton code={codeStr} />
+                        </div>
+                        <pre className="overflow-x-auto">
+                          <code
+                            className={cn("block font-mono text-[12.5px] leading-relaxed p-3.5", className)}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        </pre>
+                      </div>
                     ) : (
                       <code
-                        className="bg-surface-2 rounded px-1 py-0.5 text-xs text-surya-accent"
+                        className="bg-surface-2 rounded px-1 py-0.5 text-xs text-surya-accent font-mono"
                         {...props}
                       >
                         {children}
@@ -116,7 +152,7 @@ export const MessageBubble = memo(function MessageBubble({
                     );
                   },
                   pre({ children }) {
-                    return <pre className="not-prose">{children}</pre>;
+                    return <>{children}</>;
                   },
                 }}
               >
@@ -126,12 +162,40 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {/* Artifact chips */}
-        {!isUser && message.artifacts && message.artifacts.length > 0 && (
+        {/* Inline media artifacts (image/video) */}
+        {!isUser && message.artifacts && message.artifacts.some((a) => a.type === "image" || a.type === "video") && (
+          <div className="mt-3 space-y-3">
+            {message.artifacts
+              .filter((a) => a.type === "image" || a.type === "video")
+              .map((a) =>
+                a.type === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={a.id}
+                    src={a.url ?? a.content}
+                    alt={a.title}
+                    className="rounded-xl border border-white/10 max-w-full max-h-[512px] object-contain bg-surface-2"
+                  />
+                ) : (
+                  <video
+                    key={a.id}
+                    src={a.url ?? a.content}
+                    controls
+                    className="rounded-xl border border-white/10 max-w-full max-h-[512px] bg-surface-2"
+                  />
+                )
+              )}
+          </div>
+        )}
+
+        {/* Artifact chips (code/document/interactive only) */}
+        {!isUser && message.artifacts && message.artifacts.some((a) => a.type === "code" || a.type === "document" || a.type === "interactive") && (
           <div className="flex flex-wrap gap-2 mt-3">
-            {message.artifacts.map((artifact) => (
-              <ArtifactChip key={artifact.id} artifact={artifact} />
-            ))}
+            {message.artifacts
+              .filter((a) => a.type === "code" || a.type === "document" || a.type === "interactive")
+              .map((artifact) => (
+                <ArtifactChip key={artifact.id} artifact={artifact} />
+              ))}
           </div>
         )}
 

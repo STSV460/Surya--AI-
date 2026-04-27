@@ -67,8 +67,16 @@ export function useProject() {
         body: formData,
       });
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Upload failed");
+        let msg = "Upload failed";
+        try {
+          const errBody = await res.json() as { error?: string; detail?: string; code?: string };
+          msg = errBody.error ?? msg;
+          if (errBody.detail) msg += ` — ${errBody.detail}`;
+          if (errBody.code) msg += ` (${errBody.code})`;
+        } catch {
+          msg = (await res.text()) || msg;
+        }
+        throw new Error(msg);
       }
       const data = await res.json();
       return data.document as KnowledgeFile;

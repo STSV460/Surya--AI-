@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { aiClient, MODEL_MAP } from "@/lib/ai/client";
 import { createClient } from "@insforge/sdk";
+import { aiLimiter } from "@/lib/rate-limit";
 
 // Lazy-initialize image gen client (may use a separate InsForge instance)
 let _imageGenClient: ReturnType<typeof createClient>["ai"] | null = null;
@@ -32,6 +33,15 @@ export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  // Rate limiting
+  const { success } = await aiLimiter.check(session.user.id);
+  if (!success) {
+    return Response.json(
+      { error: "Too many requests. Please wait before generating another image." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
   }
 
   let body: { prompt?: string; action?: string };

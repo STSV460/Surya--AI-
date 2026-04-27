@@ -34,7 +34,11 @@ export function KnowledgeUploader({ files, uploading, onUpload, onDelete }: Know
         setError(`${file.name} exceeds ${MAX_FILE_MB}MB limit`);
         continue;
       }
-      await onUpload(file);
+      try {
+        await onUpload(file);
+      } catch (e) {
+        setError(`${file.name}: ${(e as Error).message}`);
+      }
     }
   }, [onUpload]);
 

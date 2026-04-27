@@ -4,7 +4,7 @@ import type { ConnectorToken } from "@/types/connector";
 
 export async function DELETE(req: Request) {
   const session = await auth();
-  if (!session?.user?.email) {
+  if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -15,17 +15,17 @@ export async function DELETE(req: Request) {
     return Response.json({ error: "Invalid provider. Must be 'google' or 'github'." }, { status: 400 });
   }
 
-  const email = session.user.email;
+  const userId = session.user.id;
 
   const existing = (await db.connectorTokens("findOne", {
-    filter: { email, provider },
+    filter: { userId, provider },
   })) as { document: ConnectorToken | null };
 
   if (!existing.document) {
     return Response.json({ error: "Not connected" }, { status: 404 });
   }
 
-  await db.connectorTokens("deleteOne", { filter: { email, provider } });
+  await db.connectorTokens("deleteOne", { filter: { userId, provider } });
 
   return Response.json({ success: true });
 }

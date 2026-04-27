@@ -21,7 +21,7 @@ export default function LandingPage() {
         {/* Logo */}
         <Image
           src="/logo.png"
-          alt="Surya AI"
+          alt="Surya AI — The Smartest Free AI for Students"
           width={72}
           height={72}
           className="rounded-2xl"
@@ -34,14 +34,14 @@ export default function LandingPage() {
         </h1>
 
         {/* Tagline */}
-        <p className="text-lg text-gray-400 max-w-sm">
-          The AI that thinks with you
-        </p>
+        <h2 className="text-lg text-gray-400 max-w-sm">
+          The AI that thinks with you — Free AI for Students & Devs
+        </h2>
 
         {/* Sub-description */}
         <p className="text-sm text-gray-600 max-w-md">
-          Powered by Claude Sonnet & Opus. Built for people who want
-          perfect results — not prompting expertise.
+          Surya AI is a production-grade AI assistant for deep research, coding, and multi-agent automation. 
+          Powered by Claude 3.5 Sonnet & Opus. No prompting expertise required.
         </p>
 
         {/* CTA */}
@@ -57,10 +57,10 @@ export default function LandingPage() {
         {/* Feature pills */}
         <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
           {[
-            "Multi-model",
+            "Multi-model AI",
             "Extended Thinking",
-            "Artifacts",
-            "Projects",
+            "AI Artifacts",
+            "AI Projects",
             "Voice Mode",
             "App Builder",
           ].map((feat) => (
@@ -72,7 +72,31 @@ export default function LandingPage() {
             </span>
           ))}
         </div>
+
+        {/* Hidden SEO Keywords Section (For Google) */}
+        <section className="sr-only">
+          <h3>Best AI Chatbot for India</h3>
+          <p>
+            Looking for a free AI chatbot in India? Surya AI offers advanced research and coding capabilities 
+            for students and professionals. Access the best AI assistant for academic work and software development.
+          </p>
+          <h3>Free AI Tools for Coding</h3>
+          <p>
+            Build apps instantly with our AI App Builder. Use the smartest AI for coding and debugging with 
+            Claude 3.5 Sonnet integration.
+          </p>
+        </section>
+
+        {/* Mini SEO Footer */}
+        <footer className="absolute bottom-8 flex gap-6 text-[10px] uppercase tracking-widest text-gray-600">
+          <Link href="/chat" className="hover:text-surya-500 transition-colors">Chat</Link>
+          <Link href="/research" className="hover:text-surya-500 transition-colors">Research</Link>
+          <Link href="/agent" className="hover:text-surya-500 transition-colors">Agents</Link>
+          <span className="opacity-30">|</span>
+          <span className="">© 2026 Surya AI India</span>
+        </footer>
       </div>
     </div>
   );
 }
+

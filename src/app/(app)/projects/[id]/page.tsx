@@ -38,8 +38,6 @@ export default function ProjectDetailPage() {
     try {
       const kf = await uploadFile(id, file);
       if (kf) setFiles((prev) => [...prev, kf]);
-    } catch (err) {
-      alert((err as Error).message);
     } finally {
       setUploading(false);
     }

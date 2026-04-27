@@ -35,11 +35,10 @@ export async function POST(req: Request) {
     name: name.trim(),
     description: description?.trim() ?? "",
     systemPrompt: systemPrompt?.trim() ?? "",
-    knowledgeFiles: [],
     createdAt: now,
     updatedAt: now,
   };
 
   await db.projects("insertOne", { document: project });
-  return Response.json({ document: project }, { status: 201 });
+  return Response.json({ document: { ...project, knowledgeFiles: [] } }, { status: 201 });
 }

@@ -1,0 +1,12 @@
+name = "surya-ai"
+compatibility_date = "2024-05-02"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# You can add public variables here, but keep secrets in the Cloudflare Dashboard!
+NEXT_PUBLIC_APP_URL = "https://suryaai.in"
+
+# Configuration for Next.js on Pages
+[[routes]]
+pattern = "/*"
+script = "_worker.js"

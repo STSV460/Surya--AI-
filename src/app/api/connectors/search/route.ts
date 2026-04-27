@@ -1,11 +1,21 @@
 import { auth } from "@/auth";
 import * as cheerio from "cheerio";
 import { isSafeUrl, normalizeSearchResults } from "@/lib/web-utils";
+import { connectorLimiter } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  // Rate limiting
+  const { success } = await connectorLimiter.check((session.user as { id: string }).id || session.user.email || "anon");
+  if (!success) {
+    return Response.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
   }
 
   const body = await req.json();

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Code2, FileText, Play } from "lucide-react";
+import { X, Code2, FileText, Play, Image as ImageIcon, Video } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { CodeArtifact } from "./CodeArtifact";
 import { DocumentArtifact } from "./DocumentArtifact";
@@ -11,18 +11,24 @@ const TYPE_ICONS = {
   code: Code2,
   document: FileText,
   interactive: Play,
+  image: ImageIcon,
+  video: Video,
 } as const;
 
 const TYPE_LABELS = {
   code: "Code",
   document: "Document",
   interactive: "Interactive",
+  image: "Image",
+  video: "Video",
 } as const;
 
 const TYPE_COLORS = {
   code: "text-blue-400 bg-blue-400/10",
   document: "text-purple-400 bg-purple-400/10",
   interactive: "text-green-400 bg-green-400/10",
+  image: "text-pink-400 bg-pink-400/10",
+  video: "text-orange-400 bg-orange-400/10",
 } as const;
 
 export function ArtifactPanel() {

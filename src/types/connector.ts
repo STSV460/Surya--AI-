@@ -1,6 +1,7 @@
 export interface ConnectorToken {
   id?: string;
-  email: string;
+  userId: string;
+  email?: string;
   provider: "google" | "github";
   accessToken: string;
   refreshToken?: string;

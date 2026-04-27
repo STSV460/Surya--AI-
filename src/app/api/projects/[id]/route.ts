@@ -63,7 +63,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   // Cascade delete knowledge files then project
   const filesResult = await db.knowledgeFiles("find", { filter: { projectId: id, userId } }) as { documents: KnowledgeFile[] };
   for (const file of filesResult.documents ?? []) {
-    await db.knowledgeFiles("deleteOne", { filter: { id: file.id } });
+    await db.knowledgeFiles("deleteOne", { filter: { id: file.id, userId } });
     invalidateCache(`file:${file.id}`);
   }
 

@@ -10,9 +10,29 @@
 
 import { createClient } from "@insforge/sdk";
 
+// --- Production Environment Validation ---
+const requiredEnv = [
+  "INSFORGE_BASE_URL",
+  "INSFORGE_API_KEY",
+  "INSFORGE_ANON_KEY",
+  "TOKEN_ENCRYPTION_KEY",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+];
+
+const missing = requiredEnv.filter((key) => !process.env[key]);
+
+if (missing.length > 0 && process.env.NODE_ENV === "production") {
+  throw new Error(
+    `❌ MISSING CRITICAL ENVIRONMENT VARIABLES: ${missing.join(", ")}. ` +
+      "The application cannot start without these in production mode."
+  );
+}
+
 const INSFORGE_BASE_URL = process.env.INSFORGE_BASE_URL!;
 const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY!;
 const INSFORGE_ANON_KEY = process.env.INSFORGE_ANON_KEY!;
+
 
 // Server-side client — uses admin API key for Authorization (bypasses RLS)
 export const insforge = createClient({
@@ -121,23 +141,19 @@ async function dbQuery(
     case "insertOne": {
       const { document } = payload;
       const snakeDoc = snakeKeys(document);
-      // InsForge REST API (POST) is not exposed on this hosted instance.
-      // Attempt the insert; if it fails with a network/404 error, silently succeed
-      // using the provided document (IDs are pre-generated with randomUUID()).
       const { data, error } = await client.from(table).insert(snakeDoc).select();
-      if (error && error.code && error.message) {
-        // RLS violations (42501) and REST-unavailable errors are soft failures:
-        // IDs are pre-generated so the caller can continue without persistence.
-        if (error.code === "42501" || error.code === "PGRST301" || error.code === "404") {
-          console.warn(`[InsForge insertOne ${table}] soft-fail (${error.code}):`, error.message);
-          return { document: camelKeys(snakeDoc) };
-        }
-        // Other real PostgREST constraint errors (unique violations, FK errors, etc.) — re-throw
+      if (error) {
         console.error(`[InsForge insertOne ${table}] ERROR:`, error.code, error.message);
-        throw new Error(error.message);
+        const err = new Error(error.message || "Insert failed") as Error & { code?: string; table?: string };
+        err.code = error.code;
+        err.table = table;
+        throw err;
       }
-      // Either success (no error) or soft-fail (empty error = REST not available)
-      return { document: data?.[0] ? camelKeys(data[0]) : camelKeys(snakeDoc) };
+      if (!data || data.length === 0) {
+        console.error(`[InsForge insertOne ${table}] empty result — insert silently dropped`);
+        throw new Error(`Insert into ${table} returned no rows (possibly RLS or schema issue)`);
+      }
+      return { document: camelKeys(data[0]) };
     }
 
     case "updateOne": {
@@ -201,4 +217,7 @@ export const db = {
   n8nConnections:  makeCollection("n8n_connections"),
   connectorTokens: makeCollection("connector_tokens"),
   usageLogs:       makeCollection("usage_logs"),
+  appBuilderProjects: makeCollection("app_builder_projects"),
+  appBuilderMessages: makeCollection("app_builder_messages"),
+  mediaAssets:     makeCollection("media_assets"),
 };

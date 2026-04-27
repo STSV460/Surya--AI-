@@ -13,6 +13,10 @@ interface ChatStore {
   enableConnectors: boolean;
   /** When true, the chat API will perform web search before responding */
   enableWebSearch: boolean;
+  /** When true, chat generates images from the user's prompt */
+  enableImageGen: boolean;
+  /** When true, chat attempts video generation (experimental) */
+  enableVideoGen: boolean;
 
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversation: (id: string | null) => void;
@@ -23,6 +27,8 @@ interface ChatStore {
   setThinkingEnabled: (enabled: boolean) => void;
   setEnableConnectors: (enabled: boolean) => void;
   setEnableWebSearch: (enabled: boolean) => void;
+  setEnableImageGen: (enabled: boolean) => void;
+  setEnableVideoGen: (enabled: boolean) => void;
   resetStream: () => void;
 }
 
@@ -35,6 +41,8 @@ export const useChatStore = create<ChatStore>((set) => ({
   thinkingEnabled: false,
   enableConnectors: false,
   enableWebSearch: false,
+  enableImageGen: false,
+  enableVideoGen: false,
 
   setConversations: (conversations) => set({ conversations }),
   setActiveConversation: (id) => set({ activeConversationId: id }),
@@ -45,5 +53,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
   setEnableConnectors: (enableConnectors) => set({ enableConnectors }),
   setEnableWebSearch: (enableWebSearch) => set({ enableWebSearch }),
+  setEnableImageGen: (enableImageGen) => set({ enableImageGen }),
+  setEnableVideoGen: (enableVideoGen) => set({ enableVideoGen }),
   resetStream: () => set({ streamingContent: "", isStreaming: false }),
 }));

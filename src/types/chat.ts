@@ -2,10 +2,15 @@ export type MessageRole = "user" | "assistant" | "system";
 
 export interface ArtifactType {
   id: string;
-  type: "code" | "document" | "interactive";
+  type: "code" | "document" | "interactive" | "image" | "video";
   title: string;
   content: string;
   language?: string;
+  /** For image/video artifacts */
+  url?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
 }
 
 /** A single web search result used for inline citations */
@@ -60,6 +65,8 @@ export interface ChatRequest {
   thinking?: boolean;
   enableConnectors?: boolean;
   enableWebSearch?: boolean;
+  enableImageGen?: boolean;
+  enableVideoGen?: boolean;
   attachments?: { name: string; content: string; type: string }[];
 }
 

@@ -1,19 +1,29 @@
 import { auth } from "@/auth";
 import { getGoogleClient, isConnectorError } from "@/lib/google-apis";
 import { google } from "googleapis";
+import { connectorLimiter } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user?.email) {
+  if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const userEmail = session.user.email;
+  // Rate limiting
+  const { success } = await connectorLimiter.check(session.user.id);
+  if (!success) {
+    return Response.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
+  const userId = session.user.id;
   const body = await req.json();
   const { action } = body;
 
   try {
-    const oauth2Client = await getGoogleClient(userEmail);
+    const oauth2Client = await getGoogleClient(userId);
 
     if (action === "read") {
       const { documentId } = body;

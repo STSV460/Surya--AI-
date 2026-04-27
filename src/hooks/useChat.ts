@@ -17,6 +17,8 @@ export function useChat(projectId?: string) {
     thinkingEnabled,
     enableConnectors,
     enableWebSearch,
+    enableImageGen,
+    enableVideoGen,
     activeConversationId,
     addMessage,
     updateStreamingContent,
@@ -24,6 +26,8 @@ export function useChat(projectId?: string) {
     setActiveConversation,
     setEnableConnectors,
     setEnableWebSearch,
+    setEnableImageGen,
+    setEnableVideoGen,
     resetStream,
   } = useChatStore();
 
@@ -59,6 +63,8 @@ export function useChat(projectId?: string) {
             projectId: projectId ?? undefined,
             enableConnectors,
             enableWebSearch,
+            enableImageGen,
+            enableVideoGen,
           }),
           signal: abortRef.current.signal,
         });
@@ -175,12 +181,16 @@ export function useChat(projectId?: string) {
       thinkingEnabled,
       enableConnectors,
       enableWebSearch,
+      enableImageGen,
+      enableVideoGen,
       addMessage,
       updateStreamingContent,
       setIsStreaming,
       setActiveConversation,
       setEnableConnectors,
       setEnableWebSearch,
+      setEnableImageGen,
+      setEnableVideoGen,
       resetStream,
       router,
     ]
@@ -201,5 +211,9 @@ export function useChat(projectId?: string) {
     setEnableConnectors,
     enableWebSearch,
     setEnableWebSearch,
+    enableImageGen,
+    setEnableImageGen,
+    enableVideoGen,
+    setEnableVideoGen,
   };
 }

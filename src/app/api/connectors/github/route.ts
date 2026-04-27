@@ -1,21 +1,31 @@
 import { auth } from "@/auth";
 import { getGitHubToken, isConnectorError } from "@/lib/google-apis";
 import axios from "axios";
+import { connectorLimiter } from "@/lib/rate-limit";
 
 const GITHUB_API = "https://api.github.com";
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user?.email) {
+  if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const userEmail = session.user.email;
+  // Rate limiting — 20 connector requests per minute per user
+  const { success } = await connectorLimiter.check(session.user.id);
+  if (!success) {
+    return Response.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
+  const userId = session.user.id;
   const body = await req.json();
   const { action } = body;
 
   try {
-    const token = await getGitHubToken(userEmail);
+    const token = await getGitHubToken(userId);
     const headers = {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",

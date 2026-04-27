@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { isSafeUrl } from "@/lib/web-utils";
 import { insforge, db } from "@/lib/insforge";
 import { MODEL_MAP, TASK_MODEL_MAP } from "@/lib/ai/models";
+import { aiLimiter } from "@/lib/rate-limit";
 import type { StreamEvent, SearchResult } from "@/types/chat";
 
 export const runtime = "nodejs";
@@ -17,6 +18,17 @@ function send(controller: ReadableStreamDefaultController, event: StreamEvent) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
+
+  const userId = (session.user as { id: string }).id;
+
+  // Rate limiting — research is the most expensive route
+  const { success } = await aiLimiter.check(userId);
+  if (!success) {
+    return Response.json(
+      { error: "Too many requests. Please wait before starting another research." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
 
   const { question, conversationId, projectId } = await req.json();
   if (!question?.trim()) return new Response("question required", { status: 400 });

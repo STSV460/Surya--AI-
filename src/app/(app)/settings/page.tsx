@@ -20,8 +20,8 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
 
   const [profile, setProfile] = useState({
-    name: "PVS Hariharan",
-    role: "Creator & Developer",
+    name: "",
+    role: "",
     bio: "",
     website: "",
   });
@@ -31,6 +31,29 @@ export default function SettingsPage() {
     defaultModel: "sonnet",
     language: "English",
   });
+
+  // Hydrate profile + preferences from server
+  useEffect(() => {
+    fetch("/api/user/preferences")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setProfile({
+          name: data.name ?? "",
+          role: data.role ?? "",
+          bio: data.bio ?? "",
+          website: data.website ?? "",
+        });
+        if (data.preferences) {
+          setPreferences({
+            responseStyle: data.preferences.responseStyle ?? "balanced",
+            defaultModel: data.preferences.defaultModel ?? "sonnet",
+            language: data.preferences.language ?? "English",
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Connector state
   const [connectorStatus, setConnectorStatus] = useState<ConnectorStatus | null>(null);
@@ -72,12 +95,20 @@ export default function SettingsPage() {
     }
   }
 
-  function handleSave() {
-    // Persist to localStorage for now (InsForge user profile update later)
-    localStorage.setItem("surya_profile", JSON.stringify(profile));
-    localStorage.setItem("surya_preferences", JSON.stringify(preferences));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function handleSave() {
+    try {
+      const res = await fetch("/api/user/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, preferences }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } catch (err) {
+      console.error("[settings] save failed:", err);
+    }
   }
 
   return (
@@ -273,25 +304,8 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="border-t border-white/6 pt-4">
-              <p className="text-xs text-gray-400 font-medium mb-3">Creator</p>
-              <div className="grid grid-cols-2 gap-y-2.5 gap-x-4">
-                {[
-                  { label: "Name", value: "PVS Hariharan" },
-                  { label: "Age", value: "12 years old" },
-                  { label: "School", value: "Bhashyam (BVRM-2)" },
-                  { label: "Email", value: "pvshariharan324@gmail.com" },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-[10px] text-gray-600 uppercase tracking-wider">{label}</p>
-                    <p className="text-xs text-white mt-0.5">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <p className="text-xs text-gray-500 border-t border-white/6 pt-4">
-              Surya AI is a production-grade AI assistant built by a 12-year-old — that&apos;s incredible! It helps you write code, answer questions, analyze data, build apps, and automate your work.
+              Surya AI is a production-grade AI assistant. It helps you write code, answer questions, analyze data, build apps, and automate your work.
             </p>
           </div>
         </section>

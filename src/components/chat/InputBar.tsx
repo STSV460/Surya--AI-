@@ -1,8 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ArrowUp, Square, Paperclip, Plug, Globe, FlaskConical } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp, Image as ImageIcon, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface AttachedFile {
+  name: string;
+  size: number;
+  content: string;
+  truncated?: boolean;
+}
 
 interface InputBarProps {
   onSend: (content: string) => void;
@@ -13,14 +20,37 @@ interface InputBarProps {
   onToggleConnectors?: () => void;
   enableWebSearch?: boolean;
   onToggleWebSearch?: () => void;
+  enableImageGen?: boolean;
+  onToggleImageGen?: () => void;
+  enableVideoGen?: boolean;
+  onToggleVideoGen?: () => void;
   onDeepResearch?: (question: string) => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnectors, onToggleConnectors, enableWebSearch, onToggleWebSearch, onDeepResearch }: InputBarProps) {
+export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnectors, onToggleConnectors, enableWebSearch, onToggleWebSearch, enableImageGen, onToggleImageGen, enableVideoGen, onToggleVideoGen, onDeepResearch }: InputBarProps) {
   const [value, setValue] = useState("");
+  const [attachments, setAttachments] = useState<AttachedFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
 
   const charCount = value.length;
+
+  // Count active tools for badge
+  const activeToolCount = [enableConnectors, enableWebSearch, enableImageGen, enableVideoGen].filter(Boolean).length;
+
+  // Close tools popup on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
+        setToolsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey && !isStreaming) {
@@ -31,34 +61,109 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
 
   function handleSend() {
     const trimmed = value.trim();
-    if (!trimmed || isStreaming || disabled) return;
-    onSend(trimmed);
+    if ((!trimmed && attachments.length === 0) || isStreaming || disabled) return;
+    let composed = trimmed;
+    if (attachments.length > 0) {
+      const ctx = attachments
+        .map((f) => `<file name="${f.name}"${f.truncated ? ' truncated="true"' : ""}>\n${f.content}\n</file>`)
+        .join("\n\n");
+      composed = ctx + (trimmed ? `\n\n${trimmed}` : "");
+    }
+    onSend(composed);
     setValue("");
+    setAttachments([]);
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/chat/files", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+        return;
+      }
+      setAttachments((a) => [...a, { name: data.name, size: data.size, content: data.content, truncated: data.truncated }]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeAttachment(idx: number) {
+    setAttachments((a) => a.filter((_, i) => i !== idx));
+  }
+
+  function handleDeepResearch() {
+    const q = value.trim();
+    if (!q || isStreaming || disabled || !onDeepResearch) return;
+    onDeepResearch(q);
+    setValue("");
+    setToolsOpen(false);
   }
 
   return (
     <div
       className={cn(
-        "bg-surface-1 border border-white/10 rounded-2xl transition-all duration-150",
-        "focus-within:border-surya-500/40 focus-within:ring-2 focus-within:ring-surya-500/20"
+        "bg-surface-1 border border-white/10 rounded-[20px] shadow-[0_4px_24px_rgba(0,0,0,0.3)] transition-all duration-150",
+        "focus-within:border-surya-500/50 focus-within:ring-[3px] focus-within:ring-surya-500/12"
       )}
     >
+      {/* Attachment chips */}
+      {(attachments.length > 0 || uploading || uploadError) && (
+        <div className="flex flex-wrap gap-2 px-4 pt-3">
+          {attachments.map((f, i) => (
+            <div key={i} className="inline-flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg bg-surface-2 border border-white/10 text-xs">
+              <FileText size={12} className="text-surya-accent" />
+              <span className="max-w-[160px] truncate">{f.name}</span>
+              {f.truncated && <span className="text-amber-400 text-[10px]">trunc</span>}
+              <button
+                type="button"
+                onClick={() => removeAttachment(i)}
+                className="p-0.5 rounded hover:bg-white/10 text-gray-500 hover:text-gray-300"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+          {uploading && (
+            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-2 text-xs text-gray-400">
+              <Loader2 size={12} className="animate-spin" /> Uploading…
+            </div>
+          )}
+          {uploadError && (
+            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 text-xs text-red-400 border border-red-500/30">
+              {uploadError}
+              <button onClick={() => setUploadError(null)} className="p-0.5"><X size={11} /></button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Textarea */}
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Message Surya AI…"
+        placeholder="Ask anything…"
         rows={1}
-        style={{ minHeight: "44px", maxHeight: "200px", resize: "none" }}
-        className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-white placeholder:text-gray-600 outline-none overflow-y-auto"
+        style={{ minHeight: "52px", maxHeight: "240px", resize: "none" }}
+        className="w-full bg-transparent px-5 pt-4 pb-1 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none overflow-y-auto"
       />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 pb-2 pt-1">
-        {/* Left: file attach */}
+        {/* Left: attach + tools */}
         <div className="flex items-center gap-1">
+
           {/* File attach */}
           <button
             type="button"
@@ -66,92 +171,151 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
             className="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:text-gray-300 hover:bg-surface-2 transition-colors"
             title="Attach file"
           >
-            <Paperclip size={14} />
+            <Plus size={16} />
           </button>
-
           <input
             ref={fileInputRef}
             type="file"
             className="hidden"
             accept=".pdf,.csv,.txt,.ts,.tsx,.js,.jsx,.py,.md"
-            onChange={() => {
-              // File upload handled in Phase 5
-            }}
+            onChange={handleFileSelect}
           />
 
-          {/* Connector toggle */}
-          {onToggleConnectors && (
+          {/* Tools dropdown */}
+          <div ref={toolsRef} className="relative">
             <button
               type="button"
-              onClick={onToggleConnectors}
+              onClick={() => setToolsOpen((v) => !v)}
               className={cn(
-                "h-7 w-7 flex items-center justify-center rounded-md transition-colors",
-                enableConnectors
-                  ? "text-surya-500 bg-surya-500/10 hover:bg-surya-500/20"
+                "h-7 flex items-center gap-1.5 px-2 rounded-md text-xs font-medium transition-colors",
+                toolsOpen || activeToolCount > 0
+                  ? "text-surya-500 bg-surya-500/10 hover:bg-surya-500/15"
                   : "text-gray-500 hover:text-gray-300 hover:bg-surface-2"
               )}
-              title={enableConnectors ? "Disable workspace connectors" : "Enable workspace connectors"}
+              title="Tools"
             >
-              <Plug size={14} />
-            </button>
-          )}
-
-          {/* Web search toggle */}
-          {onToggleWebSearch && (
-            <button
-              type="button"
-              onClick={onToggleWebSearch}
-              className={cn(
-                "h-7 w-7 flex items-center justify-center rounded-md transition-colors",
-                enableWebSearch
-                  ? "text-surya-500 bg-surya-500/10 hover:bg-surya-500/20"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-surface-2"
+              <Wrench size={13} />
+              <span>Tools</span>
+              {activeToolCount > 0 && (
+                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-surya-500 text-white text-[9px] font-bold leading-none">
+                  {activeToolCount}
+                </span>
               )}
-              title={enableWebSearch ? "Disable web search" : "Enable web search"}
-            >
-              <Globe size={14} />
+              <ChevronUp
+                size={11}
+                className={cn("opacity-50 transition-transform duration-150", !toolsOpen && "rotate-180")}
+              />
             </button>
-          )}
 
-          {/* Deep Research button */}
-          {onDeepResearch && (
-            <button
-              type="button"
-              onClick={() => {
-                const q = value.trim();
-                if (!q || isStreaming || disabled) return;
-                onDeepResearch(q);
-                setValue("");
-              }}
-              disabled={!value.trim() || isStreaming || disabled}
-              className={cn(
-                "h-7 px-2 flex items-center gap-1 rounded-md text-xs font-medium transition-colors",
-                value.trim() && !isStreaming && !disabled
-                  ? "text-surya-accent bg-surya-accent/10 hover:bg-surya-accent/20"
-                  : "text-gray-600 cursor-not-allowed"
-              )}
-              title="Deep Research — comprehensive multi-source synthesis"
-            >
-              <FlaskConical size={12} />
-              <span>Research</span>
-            </button>
-          )}
+            {/* Popup */}
+            {toolsOpen && (
+              <div className="absolute bottom-full left-0 mb-2 z-50 bg-surface-2 border border-white/10 rounded-2xl p-2 w-56 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider px-2 pt-1 pb-2 font-medium">Tools</p>
+
+                {/* Connectors */}
+                {onToggleConnectors && (
+                  <button
+                    type="button"
+                    onClick={() => { onToggleConnectors(); }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
+                      enableConnectors
+                        ? "text-surya-500 bg-surya-500/10"
+                        : "text-gray-400 hover:text-white hover:bg-white/6"
+                    )}
+                  >
+                    <Plug size={14} className="shrink-0" />
+                    <div className="flex-1 text-left">
+                      <p className="text-[13px] font-medium leading-none mb-0.5">Connectors</p>
+                      <p className="text-[11px] text-gray-500 leading-none">Google, GitHub workspace</p>
+                    </div>
+                    <div className={cn(
+                      "w-7 h-4 rounded-full transition-colors relative shrink-0",
+                      enableConnectors ? "bg-surya-500" : "bg-white/15"
+                    )}>
+                      <div className={cn(
+                        "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                        enableConnectors ? "left-3.5" : "left-0.5"
+                      )} />
+                    </div>
+                  </button>
+                )}
+
+                {/* Web search */}
+                {onToggleWebSearch && (
+                  <button
+                    type="button"
+                    onClick={() => { onToggleWebSearch(); }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
+                      enableWebSearch
+                        ? "text-surya-500 bg-surya-500/10"
+                        : "text-gray-400 hover:text-white hover:bg-white/6"
+                    )}
+                  >
+                    <Globe size={14} className="shrink-0" />
+                    <div className="flex-1 text-left">
+                      <p className="text-[13px] font-medium leading-none mb-0.5">Web Search</p>
+                      <p className="text-[11px] text-gray-500 leading-none">Search the web in real-time</p>
+                    </div>
+                    <div className={cn(
+                      "w-7 h-4 rounded-full transition-colors relative shrink-0",
+                      enableWebSearch ? "bg-surya-500" : "bg-white/15"
+                    )}>
+                      <div className={cn(
+                        "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                        enableWebSearch ? "left-3.5" : "left-0.5"
+                      )} />
+                    </div>
+                  </button>
+                )}
+
+                {/* Image/Video gen moved to /media — removed from chat */}
+
+                {/* Divider */}
+                {onDeepResearch && (onToggleConnectors || onToggleWebSearch) && (
+                  <div className="h-px bg-white/6 mx-2 my-1.5" />
+                )}
+
+                {/* Deep Research */}
+                {onDeepResearch && (
+                  <button
+                    type="button"
+                    onClick={handleDeepResearch}
+                    disabled={!value.trim() || isStreaming || disabled}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
+                      value.trim() && !isStreaming && !disabled
+                        ? "text-surya-accent hover:bg-surya-accent/10"
+                        : "text-gray-600 cursor-not-allowed"
+                    )}
+                  >
+                    <FlaskConical size={14} className="shrink-0" />
+                    <div className="flex-1 text-left">
+                      <p className="text-[13px] font-medium leading-none mb-0.5">Deep Research</p>
+                      <p className="text-[11px] text-gray-500 leading-none">Multi-source synthesis</p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right: char count + send/stop */}
         <div className="flex items-center gap-2">
-          {charCount > 0 && (
+          {charCount > 1000 && (
             <span
               className={cn(
                 "text-[10px]",
-                charCount > 8000
+                charCount > 6000
                   ? "text-red-400"
-                  : charCount > 4000
+                  : charCount > 3000
                     ? "text-amber-400"
-                    : "text-gray-600"
+                    : "text-gray-500"
               )}
             >
-              {charCount}
+              {charCount.toLocaleString()}
             </span>
           )}
           {isStreaming ? (

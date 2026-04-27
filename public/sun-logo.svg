@@ -1,0 +1,16 @@
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sun rays -->
+  <circle cx="12" cy="12" r="5" fill="currentColor"/>
+  
+  <!-- Outer rays -->
+  <line x1="12" y1="2" x2="12" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="12" y1="20" x2="12" y2="22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="22" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="4" y1="12" x2="2" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  
+  <!-- Diagonal rays -->
+  <line x1="19.07" y1="4.93" x2="17.64" y2="6.36" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="6.36" y1="17.64" x2="4.93" y2="19.07" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="19.07" y1="19.07" x2="17.64" y2="17.64" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="6.36" y1="6.36" x2="4.93" y2="4.93" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

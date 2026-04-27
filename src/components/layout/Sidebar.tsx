@@ -2,10 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Plus, Settings, MessageSquare, FolderOpen, Search, Code2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Settings, MessageSquare, FolderOpen, Search, Code2, Film, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useChatStore } from "@/stores/chatStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useUserStore } from "@/stores/userStore";
@@ -32,7 +39,31 @@ export function Sidebar() {
   const { sidebarOpen } = useUIStore();
   const user = useUserStore((s) => s.user);
   const pathname = usePathname();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+
+  async function handleRename(id: string) {
+    const current = conversations.find((c) => c.id === id);
+    const next = prompt("Rename conversation", current?.title ?? "");
+    if (!next || next === current?.title) return;
+    const res = await fetch(`/api/conversations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: next }),
+    });
+    if (res.ok) {
+      setConversations(conversations.map((c) => (c.id === id ? { ...c, title: next } : c)));
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this conversation? This cannot be undone.")) return;
+    const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setConversations(conversations.filter((c) => c.id !== id));
+      if (activeConversationId === id) router.replace("/chat");
+    }
+  }
 
   useEffect(() => {
     fetch("/api/conversations")
@@ -76,42 +107,82 @@ export function Sidebar() {
           {label}
         </p>
         {items.map((conv) => (
-          <Link
+          <div
             key={conv.id}
-            href={`/chat/${conv.id}`}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 mx-1 rounded-lg text-sm transition-colors group",
+              "group relative flex items-center gap-2 mx-1 rounded-lg transition-colors",
               conv.id === activeConversationId
                 ? "bg-surface-2 text-white"
                 : "text-gray-400 hover:bg-surface-2/60 hover:text-white"
             )}
           >
-            <MessageSquare size={13} className="shrink-0 opacity-50" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs">{conv.title || "New conversation"}</p>
-              <p className="text-[10px] text-gray-600">
-                {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
-              </p>
-            </div>
-          </Link>
+            <Link
+              href={`/chat/${conv.id}`}
+              className="flex items-center gap-2 px-3 py-2 flex-1 min-w-0 text-sm"
+            >
+              <MessageSquare size={13} className="shrink-0 opacity-50" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs">{conv.title || "New conversation"}</p>
+                <p className="text-[10px] text-gray-600">
+                  {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
+                </p>
+              </div>
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 data-[popup-open]:opacity-100 p-1.5 mr-1 rounded-md hover:bg-white/10 text-gray-400 hover:text-white transition-opacity"
+                aria-label="Conversation actions"
+              >
+                <MoreHorizontal size={14} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem onClick={() => handleRename(conv.id)}>
+                  <Pencil size={12} className="mr-2" /> Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleDelete(conv.id)}
+                  className="text-red-400 focus:text-red-400"
+                >
+                  <Trash2 size={12} className="mr-2" /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ))}
       </div>
     );
   }
 
   return (
+    <>
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => useUIStore.getState().setSidebarOpen(false)}
+        />
+      )}
     <aside
       className={cn(
         "flex flex-col h-full bg-surface-1 border-r border-white/6 transition-all duration-200 shrink-0 overflow-hidden",
-        sidebarOpen ? "w-[260px]" : "w-0"
+        "md:relative md:translate-x-0",
+        sidebarOpen ? "w-[260px]" : "w-0 md:w-0",
+        "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-2xl"
       )}
     >
-      {/* New Chat + Projects */}
-      <div className="p-3 space-y-1.5">
+      {/* Logo + brand */}
+      <div className="px-4 pt-4 pb-3 flex items-center gap-2">
+        <Image src="/logo.png" alt="Surya" width={24} height={24} className="rounded-[6px] shrink-0" />
+        <span className="font-semibold text-[15px] tracking-[-0.02em] text-white">Surya AI</span>
+      </div>
+
+      {/* New Chat + nav */}
+      <div className="px-3 pb-2 space-y-1">
         <Link
           href="/chat"
           className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium
-            bg-surya-500/10 hover:bg-surya-500/20 border border-surya-500/20 text-surya-500
+            bg-surya-500/12 hover:bg-surya-500/20 border border-surya-500/25 text-surya-500
             transition-colors"
         >
           <Plus size={15} />
@@ -123,11 +194,23 @@ export function Sidebar() {
             "flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors",
             pathname.startsWith("/projects")
               ? "bg-surface-2 text-white"
-              : "text-gray-500 hover:text-white hover:bg-surface-2/60"
+              : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
           )}
         >
           <FolderOpen size={15} />
           Projects
+        </Link>
+        <Link
+          href="/media"
+          className={cn(
+            "flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors",
+            pathname.startsWith("/media")
+              ? "bg-surface-2 text-white"
+              : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
+          )}
+        >
+          <Film size={15} />
+          Media
         </Link>
         <Link
           href="/app-builder"
@@ -135,13 +218,16 @@ export function Sidebar() {
             "flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors",
             pathname.startsWith("/app-builder")
               ? "bg-surface-2 text-white"
-              : "text-gray-500 hover:text-white hover:bg-surface-2/60"
+              : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
           )}
         >
           <Code2 size={15} />
           App Builder
         </Link>
       </div>
+
+      {/* Divider */}
+      <div className="h-px bg-white/6 mx-3 mb-2" />
 
       {/* Search bar */}
       <div className="px-3 pb-2">
@@ -172,30 +258,31 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* User avatar + settings */}
-      <div className="border-t border-white/6 p-3 flex items-center gap-2">
-        <Avatar className="w-8 h-8 shrink-0">
-          <AvatarImage src={user?.avatar} />
-          <AvatarFallback className="bg-surya-500/20 text-surya-500 text-xs">
-            {user?.name?.[0]?.toUpperCase() ?? "U"}
-          </AvatarFallback>
-        </Avatar>
+      {/* User + settings */}
+      <div className="border-t border-white/6 p-3 flex items-center gap-2.5">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold text-white shrink-0"
+          style={{ background: "linear-gradient(135deg, #1A73E8, #4FC3F7)" }}
+        >
+          {user?.name?.[0]?.toUpperCase() ?? "U"}
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-white truncate">{user?.name ?? "User"}</p>
-          <p className="text-[10px] text-gray-500 capitalize">{user?.plan ?? "free"}</p>
+          <p className="text-[12.5px] text-white font-medium truncate">{user?.name ?? "User"}</p>
+          <p className="text-[10.5px] text-gray-500 capitalize">{user?.plan ?? "free"} plan</p>
         </div>
         <Link
           href="/settings"
           className={cn(
-            "p-1.5 rounded-lg transition-colors",
+            "w-7 h-7 flex items-center justify-center rounded-lg transition-colors",
             pathname.startsWith("/settings")
               ? "text-surya-500"
-              : "text-gray-500 hover:text-white hover:bg-surface-2"
+              : "text-gray-500 hover:text-white hover:bg-white/8"
           )}
         >
           <Settings size={14} />
         </Link>
       </div>
     </aside>
+    </>
   );
 }

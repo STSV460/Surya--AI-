@@ -30,6 +30,10 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     setEnableConnectors,
     enableWebSearch,
     setEnableWebSearch,
+    enableImageGen,
+    setEnableImageGen,
+    enableVideoGen,
+    setEnableVideoGen,
   } = useChat(projectId);
 
   const {
@@ -59,14 +63,20 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
 
     fetch(`/api/conversations/${conversationId}/messages`)
       .then((r) => {
+        if (r.status === 404 || r.status === 403) {
+          router.replace("/chat");
+          throw new Error("not_found");
+        }
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
       })
       .then((data) => {
         setMessages(data.documents ?? []);
       })
-      .catch(() => {
-        // Conversation not found or unauthorized — messages stay empty
+      .catch((err) => {
+        if (err?.message !== "not_found") {
+          console.error("[chat] load messages failed:", err);
+        }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
@@ -101,6 +111,7 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           messages={messages}
           isStreaming={isStreaming}
           streamingContent={streamingContent}
+          onSend={(content) => sendMessage(content, conversationId)}
         />
 
         {/* Deep Research progress — animated stages */}
@@ -126,6 +137,10 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
             onToggleConnectors={() => setEnableConnectors(!enableConnectors)}
             enableWebSearch={enableWebSearch}
             onToggleWebSearch={() => setEnableWebSearch(!enableWebSearch)}
+            enableImageGen={enableImageGen}
+            onToggleImageGen={() => setEnableImageGen(!enableImageGen)}
+            enableVideoGen={enableVideoGen}
+            onToggleVideoGen={() => setEnableVideoGen(!enableVideoGen)}
             onDeepResearch={(question) => startResearch(question, conversationId, projectId)}
           />
         </div>

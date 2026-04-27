@@ -1,146 +1,103 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Wand2, Loader2, Zap } from "lucide-react";
-import { useWebContainer } from "@/hooks/useWebContainer";
-import { WebContainerFrame } from "@/components/app-builder/WebContainerFrame";
-
-const EXAMPLE_PROMPTS = [
-  "Todo app with local storage",
-  "Calculator with history",
-  "Weather dashboard UI",
-  "Pomodoro timer",
-  "Markdown editor with live preview",
-];
+import { useCallback, useRef, useState } from "react";
+import { useAppBuilder } from "@/hooks/useAppBuilder";
+import { AppBuilderChatPanel } from "@/components/app-builder/AppBuilderChatPanel";
+import { AppBuilderBuildPanel } from "@/components/app-builder/AppBuilderBuildPanel";
+import { AppBuilderGallery } from "@/components/app-builder/AppBuilderGallery";
+import { ArrowLeft } from "lucide-react";
 
 export default function AppBuilderPage() {
-  const [prompt, setPrompt] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
+  const hook = useAppBuilder();
+  const [chatWidthPct, setChatWidthPct] = useState(37);
+  const [forceGallery, setForceGallery] = useState(false);
+  const [forceChat, setForceChat] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
 
-  const {
-    status,
-    previewUrl,
-    terminalOutput,
-    fileTree,
-    selectedFile,
-    selectedFileContent,
-    error: wcError,
-    mountApp,
-    editFile,
-    selectFile,
-  } = useWebContainer();
+  // Derived view: chat if project active OR user clicked New; gallery otherwise.
+  const view: "gallery" | "chat" = forceGallery
+    ? "gallery"
+    : forceChat || hook.projectId || hook.messages.length > 0
+    ? "chat"
+    : "gallery";
 
-  const handleBuild = useCallback(async () => {
-    const trimmed = prompt.trim();
-    if (!trimmed || generating) return;
+  const startDrag = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    dragging.current = true;
 
-    setGenerating(true);
-    setGenError(null);
+    const onMove = (mv: PointerEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const pct = ((mv.clientX - rect.left) / rect.width) * 100;
+      setChatWidthPct(Math.min(65, Math.max(25, pct)));
+    };
 
-    try {
-      const res = await fetch("/api/app-builder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed }),
-      });
+    const onUp = () => {
+      dragging.current = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
 
-      const data = await res.json();
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
 
-      if (!res.ok || data.error) {
-        throw new Error(data.error ?? `HTTP ${res.status}`);
-      }
-
-      await mountApp(data.files as Record<string, string>);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setGenError(msg);
-    } finally {
-      setGenerating(false);
-    }
-  }, [prompt, generating, mountApp]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleBuild();
-    }
+  const handleBackToGallery = () => {
+    hook.newProject();
+    setForceChat(false);
+    setForceGallery(true);
   };
 
-  const isBuilding =
-    generating || ["booting", "installing", "starting"].includes(status);
-  const displayError = genError ?? wcError;
+  if (view === "gallery") {
+    return (
+      <AppBuilderGallery
+        hook={hook}
+        onStartNew={() => {
+          setForceGallery(false);
+          setForceChat(true);
+        }}
+        onOpen={(id) => {
+          hook.openProject(id);
+          setForceGallery(false);
+          setForceChat(true);
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Prompt Bar */}
-      <div className="flex-shrink-0 border-b border-white/5 bg-surface-1 px-4 py-3">
-        <div className="flex items-start gap-3 max-w-5xl">
-          <div className="relative flex-1">
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Describe the app you want to build... (Enter to build)"
-              rows={1}
-              disabled={isBuilding}
-              className="w-full resize-none bg-surface-2 text-white text-sm rounded-lg px-4 py-2.5 border border-white/10 focus:outline-none focus:border-surya-500 placeholder-gray-500 disabled:opacity-50 transition-colors"
-              style={{ minHeight: "40px", maxHeight: "80px" }}
-            />
-          </div>
-          <button
-            onClick={handleBuild}
-            disabled={!prompt.trim() || isBuilding}
-            className="flex items-center gap-2 px-4 py-2.5 bg-surya-500 hover:bg-surya-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex-shrink-0"
-          >
-            {isBuilding ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {generating ? "Generating..." : "Building..."}
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-4 h-4" />
-                Build App
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Example prompts */}
-        {Object.keys(fileTree).length === 0 && !isBuilding && (
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Zap className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-            {EXAMPLE_PROMPTS.map((ex) => (
-              <button
-                key={ex}
-                onClick={() => setPrompt(ex)}
-                className="text-xs text-gray-400 hover:text-surya-500 bg-white/5 hover:bg-surya-500/10 px-2 py-0.5 rounded-full transition-colors border border-white/5 hover:border-surya-500/30"
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {displayError && (
-          <p className="mt-2 text-xs text-red-400">⚠️ {displayError}</p>
+    <div className="flex flex-col h-full overflow-hidden select-none">
+      {/* Project header */}
+      <div className="flex items-center gap-2 px-3 h-9 border-b border-white/5 bg-surface-1 flex-shrink-0">
+        <button
+          onClick={handleBackToGallery}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <ArrowLeft size={11} />
+          Projects
+        </button>
+        {hook.projectName && (
+          <>
+            <span className="text-gray-600 text-xs">/</span>
+            <span className="text-xs text-gray-200 truncate">{hook.projectName}</span>
+          </>
         )}
       </div>
 
-      {/* WebContainer Frame */}
-      <div className="flex-1 overflow-hidden">
-        <WebContainerFrame
-          status={status}
-          previewUrl={previewUrl}
-          terminalOutput={terminalOutput}
-          fileTree={fileTree}
-          selectedFile={selectedFile}
-          selectedFileContent={selectedFileContent}
-          onSelectFile={selectFile}
-          onEditFile={editFile}
-          className="h-full"
+      <div ref={containerRef} className="flex flex-1 min-h-0 overflow-hidden">
+        <div style={{ width: `${chatWidthPct}%` }} className="flex-shrink-0 overflow-hidden">
+          <AppBuilderChatPanel {...hook} />
+        </div>
+
+        <div
+          onPointerDown={startDrag}
+          className="w-1 flex-shrink-0 bg-surface-2 hover:bg-surya-500/40 cursor-col-resize transition-colors"
         />
+
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <AppBuilderBuildPanel {...hook} />
+        </div>
       </div>
     </div>
   );

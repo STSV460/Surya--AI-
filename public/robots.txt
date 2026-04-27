@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /chat
+Allow: /research
+Allow: /agent
+Allow: /media
+Disallow: /api/
+Disallow: /settings
+Disallow: /profile
+
+Sitemap: https://surya-ai.com/sitemap.xml
