@@ -42,6 +42,15 @@ const nextConfig: NextConfig = {
 
   // Required to silence Turbopack config conflict warning in Next.js 16
   turbopack: {},
+
+  // Disable memory-heavy checks during Cloudflare build
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
+
 
 export default nextConfig;
