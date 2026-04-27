@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { aiClient, MODEL_MAP } from "@/lib/ai/client";
 import { createClient } from "@insforge/sdk";

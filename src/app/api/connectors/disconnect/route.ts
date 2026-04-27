@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
 import type { ConnectorToken } from "@/types/connector";

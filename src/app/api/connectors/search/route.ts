@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import * as cheerio from "cheerio";
 import { isSafeUrl, normalizeSearchResults } from "@/lib/web-utils";

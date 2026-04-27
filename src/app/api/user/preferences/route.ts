@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { insforgeDb as db } from "@/lib/insforge";
 

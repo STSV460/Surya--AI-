@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { after } from "next/server";
 import { auth } from "@/auth";
 import { generateHfSpacesVideo } from "@/lib/media/hfSpaces";

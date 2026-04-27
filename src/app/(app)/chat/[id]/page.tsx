@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { ChatInterface } from "@/components/chat/ChatInterface";
 
 export default async function ChatPage({

@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { uploadBlobToBucket } from "@/lib/media/storage";
 
@@ -53,4 +55,3 @@ export async function POST(req: Request) {
   const url = await uploadBlobToBucket(session.user.id, kind, file);
   return Response.json({ url });
 }
-

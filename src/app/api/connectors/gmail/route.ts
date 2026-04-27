@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { getGoogleClient, isConnectorError } from "@/lib/google-apis";
 import { google } from "googleapis";

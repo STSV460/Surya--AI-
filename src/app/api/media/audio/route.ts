@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { synthesizeElevenLabs } from "@/lib/media/elevenlabs";
 import { synthesizeSarvam } from "@/lib/media/sarvam";

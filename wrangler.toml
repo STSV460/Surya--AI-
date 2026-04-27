@@ -1,7 +1,6 @@
 name = "surya-ai"
 compatibility_date = "2024-05-02"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".open-next/assets"
 
 [vars]
 # You can add public variables here, but keep secrets in the Cloudflare Dashboard!

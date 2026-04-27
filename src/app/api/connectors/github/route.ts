@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { getGitHubToken, isConnectorError } from "@/lib/google-apis";
 import axios from "axios";

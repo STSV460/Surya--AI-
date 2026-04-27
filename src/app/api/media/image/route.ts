@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { auth } from "@/auth";
 import { MODEL_MAP } from "@/lib/ai/client";
 import { uploadBase64ToBucket, uploadUrlToBucket } from "@/lib/media/storage";
