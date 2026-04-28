@@ -1,10 +1,13 @@
 name = "surya-ai"
-compatibility_date = "2024-05-02"
+main = ".open-next/worker.js"
+compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".open-next/assets"
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
 
 [vars]
-# You can add public variables here, but keep secrets in the Cloudflare Dashboard!
+# Public variables (kept in Wrangler config). Secrets stay in
+# the Cloudflare dashboard or wrangler secret put.
 NEXT_PUBLIC_APP_URL = "https://suryaai.in"
-
-
