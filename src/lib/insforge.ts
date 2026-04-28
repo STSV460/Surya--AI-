@@ -10,7 +10,11 @@
 
 import { createClient } from "@insforge/sdk";
 
-// --- Production Environment Validation ---
+// --- Environment Validation ---
+// Note: do NOT throw at module load — `next build` and OpenNext page-data
+// collection import this file before runtime env is wired. Validation is
+// deferred to first DB call where missing values surface as fetch errors
+// with a useful message.
 const requiredEnv = [
   "INSFORGE_BASE_URL",
   "INSFORGE_API_KEY",
@@ -21,17 +25,17 @@ const requiredEnv = [
 ];
 
 const missing = requiredEnv.filter((key) => !process.env[key]);
-
 if (missing.length > 0 && process.env.NODE_ENV === "production") {
-  throw new Error(
-    `❌ MISSING CRITICAL ENVIRONMENT VARIABLES: ${missing.join(", ")}. ` +
-      "The application cannot start without these in production mode."
+  // Warn only — do not throw, otherwise build-time static analysis crashes.
+  console.warn(
+    `[insforge] Missing env vars at module load: ${missing.join(", ")}. ` +
+      "Requests will fail until these are set at runtime."
   );
 }
 
-const INSFORGE_BASE_URL = process.env.INSFORGE_BASE_URL!;
-const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY!;
-const INSFORGE_ANON_KEY = process.env.INSFORGE_ANON_KEY!;
+const INSFORGE_BASE_URL = process.env.INSFORGE_BASE_URL ?? "";
+const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY ?? "";
+const INSFORGE_ANON_KEY = process.env.INSFORGE_ANON_KEY ?? "";
 
 
 // Server-side client — uses admin API key for Authorization (bypasses RLS)
