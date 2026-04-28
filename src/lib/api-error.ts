@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+// randomUUID via globalThis.crypto (Web Crypto API)
 
 /**
  * Sanitized API error response. Logs full error server-side, returns only a

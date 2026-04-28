@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import * as cheerio from "cheerio";
-import { randomUUID } from "crypto";
+// randomUUID via globalThis.crypto (Web Crypto API)
 import { isSafeUrl } from "@/lib/web-utils";
 import { insforge, db } from "@/lib/insforge";
 import { MODEL_MAP, TASK_MODEL_MAP } from "@/lib/ai/models";

@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
-import { randomUUID } from "crypto";
+// randomUUID via globalThis.crypto (Web Crypto API)
 
 export const runtime = "edge";
 

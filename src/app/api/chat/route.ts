@@ -7,7 +7,7 @@ import { getCached, setCache } from "@/lib/knowledge-cache";
 import { aiLimiter } from "@/lib/rate-limit";
 import type { ChatRequest, Message, ArtifactType, StreamEvent } from "@/types/chat";
 import type { Project, KnowledgeFile } from "@/types/project";
-import { randomUUID } from "crypto";
+// randomUUID via globalThis.crypto (Web Crypto API)
 
 export const runtime = "edge";
 export const maxDuration = 120;

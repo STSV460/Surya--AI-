@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
 import { invalidateCache } from "@/lib/knowledge-cache";
 import { apiError } from "@/lib/api-error";
-import { randomUUID } from "crypto";
+// randomUUID via globalThis.crypto (Web Crypto API)
 import type { Project } from "@/types/project";
 
 export const runtime = "edge";
