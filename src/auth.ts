@@ -163,8 +163,8 @@ const config: NextAuthConfig = {
             user_id: resolvedProfileId,
             email: user.email, // kept for display, NEVER used as a lookup key
             provider,
-            access_token: encrypt(account.access_token),
-            refresh_token: account.refresh_token ? encrypt(account.refresh_token) : null,
+            access_token: await encrypt(account.access_token),
+            refresh_token: account.refresh_token ? await encrypt(account.refresh_token) : null,
             expires_at: account.expires_at
               ? new Date((account.expires_at as number) * 1000).toISOString()
               : null,

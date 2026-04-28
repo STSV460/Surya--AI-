@@ -30,8 +30,8 @@ export async function getGoogleClient(userId: string) {
 
   const token = result.document;
   // Decrypt tokens retrieved from DB
-  let accessToken = decryptOrPlain(token.accessToken);
-  const refreshToken = token.refreshToken ? decryptOrPlain(token.refreshToken) : null;
+  let accessToken = await decryptOrPlain(token.accessToken);
+  const refreshToken = token.refreshToken ? await decryptOrPlain(token.refreshToken) : null;
 
   // Refresh if expired or expiring within buffer window
   if (token.expiresAt) {
@@ -83,7 +83,7 @@ export async function getGoogleClient(userId: string) {
         filter: { userId, provider: "google" },
         update: {
           $set: {
-            accessToken: encrypt(accessToken), // Encrypt before storing
+            accessToken: await encrypt(accessToken), // Encrypt before storing
             expiresAt: newExpiresAt,
             updatedAt: new Date().toISOString(),
           },
@@ -113,6 +113,6 @@ export async function getGitHubToken(userId: string): Promise<string> {
     } as ConnectorError;
   }
 
-  return decryptOrPlain(result.document.accessToken);
+  return await decryptOrPlain(result.document.accessToken);
 }
 
