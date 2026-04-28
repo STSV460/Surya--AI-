@@ -11,7 +11,15 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  let session;
+  try {
+    session = await auth();
+  } catch (err) {
+    // If auth() throws (Cloudflare Worker bundling issue, network failure, etc.),
+    // log full stack and fall through to /login redirect instead of returning 500.
+    console.error("[AppLayout] auth() threw:", err);
+    redirect("/login");
+  }
 
   if (!session?.user) {
     redirect("/login");
