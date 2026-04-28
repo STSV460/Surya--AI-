@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
 import { randomUUID } from "crypto";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 // GET /api/projects — list user's projects
 export async function GET() {

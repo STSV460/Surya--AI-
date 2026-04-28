@@ -3,7 +3,7 @@ import { db } from "@/lib/insforge";
 import { invalidateCache } from "@/lib/knowledge-cache";
 import type { KnowledgeFile } from "@/types/project";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 export async function DELETE(
   req: Request,

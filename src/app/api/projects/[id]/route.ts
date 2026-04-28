@@ -3,7 +3,7 @@ import { db } from "@/lib/insforge";
 import { invalidateCache } from "@/lib/knowledge-cache";
 import type { Project, KnowledgeFile } from "@/types/project";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 async function getOwnedProject(userId: string, id: string): Promise<Project | null> {
   const result = await db.projects("findOne", { filter: { id, userId } }) as { document: Project | null };

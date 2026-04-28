@@ -5,7 +5,7 @@ import { apiError } from "@/lib/api-error";
 import { randomUUID } from "crypto";
 import type { Project } from "@/types/project";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_PROJECT_BYTES = 50 * 1024 * 1024; // 50MB

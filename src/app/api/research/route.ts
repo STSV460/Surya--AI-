@@ -8,7 +8,7 @@ import { MODEL_MAP, TASK_MODEL_MAP } from "@/lib/ai/models";
 import { aiLimiter } from "@/lib/rate-limit";
 import type { StreamEvent, SearchResult } from "@/types/chat";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const maxDuration = 300;
 
 function send(controller: ReadableStreamDefaultController, event: StreamEvent) {

@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 async function requireOwned(id: string, userId: string) {
   const { document } = (await db.conversations("findOne", {

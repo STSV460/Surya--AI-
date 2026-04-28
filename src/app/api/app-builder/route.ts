@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { aiClient, MODEL_MAP } from "@/lib/ai/client";
 import { aiLimiter } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const maxDuration = 300;
 
 function isSimpleApp(prompt: string): boolean {

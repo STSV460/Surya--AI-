@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 export async function GET() {
   const session = await auth();

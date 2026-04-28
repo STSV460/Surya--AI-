@@ -9,7 +9,7 @@ import type { ChatRequest, Message, ArtifactType, StreamEvent } from "@/types/ch
 import type { Project, KnowledgeFile } from "@/types/project";
 import { randomUUID } from "crypto";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const maxDuration = 120;
 
 function send(controller: ReadableStreamDefaultController, event: StreamEvent) {
