@@ -1,14 +1,26 @@
-import { google } from "googleapis";
+/**
+ * Google API helpers — edge-compatible stub
+ *
+ * The full implementation depends on the `googleapis` npm package, which
+ * uses Node-only APIs (fs, process internals) and cannot run on Cloudflare
+ * Pages' edge runtime. The Google connector endpoints (calendar/drive/docs/
+ * gmail) are temporarily disabled until they're rewritten using direct
+ * REST calls (fetch) to https://www.googleapis.com/*.
+ *
+ * What's still here:
+ *   - `getGitHubToken` — pure DB lookup + decrypt, no googleapis dependency
+ *   - `isConnectorError` — type guard
+ *
+ * Token persistence in `src/auth.ts` is unaffected; tokens still get
+ * encrypted and stored on sign-in.
+ */
+
 import { db } from "@/lib/insforge";
-import { encrypt, decryptOrPlain } from "@/lib/crypto";
+import { decryptOrPlain } from "@/lib/crypto";
 import type { ConnectorToken } from "@/types/connector";
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
-
 interface ConnectorError {
-  code: "NOT_CONNECTED" | "TOKEN_EXPIRED";
+  code: "NOT_CONNECTED" | "TOKEN_EXPIRED" | "NOT_AVAILABLE";
   message: string;
 }
 
@@ -16,89 +28,18 @@ export function isConnectorError(err: unknown): err is ConnectorError {
   return typeof err === "object" && err !== null && "code" in err;
 }
 
-export async function getGoogleClient(userId: string) {
-  const result = (await db.connectorTokens("findOne", {
-    filter: { userId, provider: "google" },
-  })) as { document: ConnectorToken | null };
-
-  if (!result.document) {
-    throw {
-      code: "NOT_CONNECTED",
-      message: "Google account not connected. Please sign in with Google.",
-    } as ConnectorError;
-  }
-
-  const token = result.document;
-  // Decrypt tokens retrieved from DB
-  let accessToken = await decryptOrPlain(token.accessToken);
-  const refreshToken = token.refreshToken ? await decryptOrPlain(token.refreshToken) : null;
-
-  // Refresh if expired or expiring within buffer window
-  if (token.expiresAt) {
-    const expiresAt = new Date(token.expiresAt).getTime();
-    if (Date.now() + TOKEN_REFRESH_BUFFER_MS > expiresAt) {
-      if (!refreshToken) {
-        throw {
-          code: "NOT_CONNECTED",
-          message: "Google token expired. Please sign in again.",
-        } as ConnectorError;
-      }
-
-      const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID,
-          client_secret: GOOGLE_CLIENT_SECRET,
-          refresh_token: refreshToken,
-          grant_type: "refresh_token",
-        }),
-      });
-
-      const refreshData = await refreshRes.json();
-
-      if (refreshData.error === "invalid_grant") {
-        await db.connectorTokens("deleteOne", {
-          filter: { userId, provider: "google" },
-        });
-        throw {
-          code: "TOKEN_EXPIRED",
-          message: "Google token revoked. Please sign in again.",
-        } as ConnectorError;
-      }
-
-      if (!refreshRes.ok || !refreshData.access_token) {
-        throw {
-          code: "TOKEN_EXPIRED",
-          message: "Failed to refresh Google token. Please sign in again.",
-        } as ConnectorError;
-      }
-
-      accessToken = refreshData.access_token;
-      const newExpiresAt = new Date(
-        Date.now() + refreshData.expires_in * 1000
-      ).toISOString();
-
-      await db.connectorTokens("updateOne", {
-        filter: { userId, provider: "google" },
-        update: {
-          $set: {
-            accessToken: await encrypt(accessToken), // Encrypt before storing
-            expiresAt: newExpiresAt,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-      });
-    }
-  }
-
-  const oauth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
-  oauth2Client.setCredentials({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
-
-  return oauth2Client;
+/**
+ * @deprecated Disabled in edge build. Returns a NOT_AVAILABLE error so
+ * callers (the 4 Google connector routes) can return a 503.
+ */
+export async function getGoogleClient(_userId: string): Promise<never> {
+  throw {
+    code: "NOT_AVAILABLE",
+    message:
+      "Google connectors are temporarily unavailable in this deployment. " +
+      "The googleapis SDK is not edge-compatible; routes will be rewritten " +
+      "with direct REST calls in a follow-up.",
+  } as ConnectorError;
 }
 
 export async function getGitHubToken(userId: string): Promise<string> {
@@ -115,4 +56,3 @@ export async function getGitHubToken(userId: string): Promise<string> {
 
   return await decryptOrPlain(result.document.accessToken);
 }
-
