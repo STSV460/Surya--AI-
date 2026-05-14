@@ -3,3 +3,4 @@
 [2026-05-14T07:02:20Z] heartbeat-30m site=200/1.0s(www) ollama=up models=llama3.2,Surya-AI,gemma4:e4b,nomic-embed-text stuck_agents=0 pending=0 status=OK
 [2026-05-14T07:03:07Z] heartbeat-30m site=200/0.762962s ollama=200 cron=1 receiver=1 stuck_agents=0 pending=0 model=llama3.2 status=OK
 [2026-05-14T13:01:57Z] heartbeat-30m site=200/0.779467s ollama=200 stuck_agents=0 pending=0 model=llama3.2 status=OK
+[2026-05-14T13:02:54Z] heartbeat-30m site=200/0.715187s ollama=200 worktrees=2 stuck_agents=0 pending=0 model=llama3.2 status=OK
