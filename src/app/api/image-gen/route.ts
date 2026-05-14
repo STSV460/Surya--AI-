@@ -1,12 +1,21 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
-import { aiClient, MODEL_MAP } from "@/lib/ai/client";
+import { aiClient } from "@/lib/ai/client";
 import { createClient } from "@insforge/sdk";
 import { aiLimiter } from "@/lib/rate-limit";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
+
+// Gemini 3 Pro Image can take 30-60s. Default 10s would always timeout.
+// Vercel Hobby plan caps at 60s for non-streaming routes.
+export const maxDuration = 60;
 
 // Lazy-initialize image gen client (may use a separate InsForge instance)
 let _imageGenClient: ReturnType<typeof createClient>["ai"] | null = null;
+
+const imageGenSchema = z.object({
+  prompt: z.string().trim().min(1).max(4000),
+});
 
 function getImageGenClient() {
   if (_imageGenClient) return _imageGenClient;
@@ -46,71 +55,50 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { prompt?: string; action?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const prompt = body.prompt;
-  if (!prompt) {
-    return Response.json({ error: "prompt is required" }, { status: 400 });
-  }
+  const body = await parseJson(req, imageGenSchema);
+  if (isResponse(body)) return body;
+  const { prompt } = body;
 
   try {
     const imageClient = getImageGenClient();
-    const model = process.env.IMAGE_GEN_MODEL ?? MODEL_MAP.gemini;
+    const model = process.env.IMAGE_GEN_MODEL ?? "google/gemini-3-pro-image-preview";
 
-    // Gemini image generation via InsForge gateway
+    // Use native InsForge images.generate — replaces the broken
+    // chat.completions + response_modalities approach (SDK silently dropped
+    // that field, leaving the model to answer text-only).
+    //
+    // Per InsForge SDK source: response shape is
+    //   { created, data: [{ b64_json, content? }, ...] }
+    // where `b64_json` is the raw base64 (data URI prefix already stripped).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await (imageClient.chat.completions.create as any)({
+    const response: any = await (imageClient as any).images.generate({
       model,
-      messages: [
-        {
-          role: "user",
-          content: `Generate an image of: ${prompt}`,
-        },
-      ],
-      response_modalities: ["IMAGE", "TEXT"],
+      prompt,
     });
 
-    const content = response.choices?.[0]?.message?.content;
-
-    // Gemini returns content as an array of parts
-    if (Array.isArray(content)) {
-      for (const part of content) {
-        // Inline base64 image
-        if (part?.inline_data?.data && part?.inline_data?.mime_type) {
-          const dataUrl = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
-          return Response.json({ imageUrl: dataUrl });
-        }
-        // Image URL part
-        if (part?.image_url?.url) {
-          return Response.json({ imageUrl: part.image_url.url });
-        }
-      }
-      // Array but no image — extract text
-      const textPart = content.find(
-        (p: { type?: string; text?: string }) => p?.text
-      );
-      return Response.json({
-        text: textPart?.text ?? "Image generation completed without an image.",
-      });
+    const first = response?.data?.[0];
+    if (first?.b64_json) {
+      return Response.json({ imageUrl: `data:image/png;base64,${first.b64_json}` });
+    }
+    // Some providers may also return a hosted URL directly
+    if (first?.url) {
+      return Response.json({ imageUrl: first.url });
+    }
+    // Text-only fallback (model declined or returned just commentary)
+    if (first?.content) {
+      return Response.json({ text: first.content });
     }
 
-    // String response — return as text
-    if (typeof content === "string") {
-      return Response.json({ text: content });
-    }
-
+    console.warn(
+      "[image-gen] empty image response, shape:",
+      JSON.stringify(response).slice(0, 500)
+    );
     return Response.json({
-      text: "Image generation is not supported by the current model configuration.",
+      text: "Image generation completed but no image data returned.",
     });
   } catch (err) {
     console.error("[image-gen] Error:", err);
     const msg = err instanceof Error ? err.message : "Unknown error";
-    // Return 200 with error text so the AI can explain it gracefully in the chat
     return Response.json(
       {
         error: msg,

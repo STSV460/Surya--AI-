@@ -1,4 +1,5 @@
 import { insforge } from "@/lib/insforge";
+import { safeFetch } from "@/lib/web-utils";
 
 const BUCKET = process.env.MEDIA_BUCKET ?? "media-assets";
 
@@ -46,7 +47,9 @@ export async function uploadUrlToBucket(
   kind: string,
   url: string
 ): Promise<string> {
-  const res = await fetch(url);
+  // SSRF guard: validate URL + redirect chain. Blocks private/loopback/cloud-metadata
+  // even if Replicate/FAL returned a malicious URL or the user supplied one directly.
+  const res = await safeFetch(url);
   if (!res.ok) throw new Error(`Fetch source failed: ${res.status}`);
   const ct = res.headers.get("content-type") ?? "";
   const buf = Buffer.from(await res.arrayBuffer());

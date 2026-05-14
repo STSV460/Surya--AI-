@@ -5,7 +5,6 @@ import { apiError } from "@/lib/api-error";
 // randomUUID via globalThis.crypto (Web Crypto API)
 import type { Project } from "@/types/project";
 
-export const runtime = "edge";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_PROJECT_BYTES = 50 * 1024 * 1024; // 50MB
@@ -129,7 +128,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const mimeType = file.type || "text/plain";
   // Insert without mimeType — schema doesn't have that column on hosted InsForge
   const insertDoc = {
-    id: randomUUID(),
+    id: crypto.randomUUID(),
     projectId,
     userId,
     name: file.name,

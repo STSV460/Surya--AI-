@@ -1,7 +1,11 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 
-export const runtime = "edge";
+const createAppProjectSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+});
 
 export async function GET() {
   const session = await auth();
@@ -21,19 +25,17 @@ export async function POST(req: Request) {
   if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
 
   const userId = session.user.id;
-  let body: { name?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
-    // empty body OK
-  }
+  const body = req.headers.get("content-length") === "0"
+    ? { name: undefined }
+    : await parseJson(req, createAppProjectSchema);
+  if (isResponse(body)) return body;
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const doc = {
     id,
     userId,
-    name: body.name?.slice(0, 120) || "Untitled App",
+    name: body.name || "Untitled App",
     files: {},
     messages: [],
     previewMode: "none",

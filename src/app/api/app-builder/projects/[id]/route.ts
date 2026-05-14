@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 
-export const runtime = "edge";
 
 type ProjectDoc = {
   id: string;
@@ -13,6 +14,13 @@ type ProjectDoc = {
   createdAt?: string;
   updatedAt?: string;
 };
+
+const updateAppProjectSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  files: z.record(z.string().max(240), z.string().max(250_000)).optional(),
+  messages: z.array(z.unknown()).max(200).optional(),
+  previewMode: z.enum(["none", "srcdoc", "webcontainer"]).optional(),
+});
 
 async function loadOwned(id: string, userId: string) {
   const { document } = (await db.appBuilderProjects("findOne", {
@@ -41,15 +49,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const check = await loadOwned(id, session.user.id);
   if (check.status !== 200) return new Response(null, { status: check.status });
 
-  const body = (await req.json().catch(() => ({}))) as {
-    name?: string;
-    files?: Record<string, string>;
-    messages?: unknown[];
-    previewMode?: string;
-  };
+  const body = await parseJson(req, updateAppProjectSchema);
+  if (isResponse(body)) return body;
 
   const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-  if (typeof body.name === "string") update.name = body.name.slice(0, 120);
+  if (typeof body.name === "string") update.name = body.name;
   if (body.files && typeof body.files === "object") update.files = body.files;
   if (Array.isArray(body.messages)) update.messages = body.messages;
   if (typeof body.previewMode === "string") update.previewMode = body.previewMode;

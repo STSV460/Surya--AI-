@@ -23,7 +23,7 @@ export function MediaStudio() {
   const setActiveTab = useMediaStore((s) => s.setActiveTab);
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-full min-h-0 bg-background">
       {/* Tab rail */}
       <nav className="w-16 shrink-0 border-r border-white/6 bg-surface-1 flex flex-col items-center py-3 gap-1">
         {TABS.map((t) => {
@@ -54,7 +54,7 @@ export function MediaStudio() {
           <h2 className="text-sm font-semibold text-white capitalize">{activeTab}</h2>
           <p className="text-[11px] text-white/40 mt-0.5">Surya Media Studio</p>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {activeTab === "video" && <VideoTab />}
           {activeTab === "image" && <ImageTab />}
           {activeTab === "audio" && <AudioTab />}

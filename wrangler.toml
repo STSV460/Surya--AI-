@@ -10,4 +10,4 @@ binding = "ASSETS"
 [vars]
 # Public variables (kept in Wrangler config). Secrets stay in
 # the Cloudflare dashboard or wrangler secret put.
-NEXT_PUBLIC_APP_URL = "https://suryaai.in"
+NEXT_PUBLIC_APP_URL = "https://www.suryaai.in"

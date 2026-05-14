@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
@@ -18,7 +17,9 @@ export async function GET() {
 
   const tokens = result.documents ?? [];
 
-  const google = tokens.find((t) => t.provider === "google");
+  // "google-workspace" = explicitly connected via Settings connector flow (has workspace scopes)
+  // "google" = basic login token (no workspace scopes) — treated as NOT connected for workspace features
+  const google = tokens.find((t) => t.provider === "google-workspace");
   const github = tokens.find((t) => t.provider === "github");
 
   return Response.json({

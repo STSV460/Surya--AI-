@@ -1,10 +1,9 @@
 "use client";
 
-export const runtime = "edge";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { User, Palette, Bot, Save, Plug, ArrowLeft, LogOut } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { User, Palette, Bot, Save, Plug, ArrowLeft, LogOut, Brain, Trash2 } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,23 @@ interface ConnectorStatus {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [saved, setSaved] = useState(false);
+  const [connectorToast, setConnectorToast] = useState<string | null>(null);
+
+  // Show feedback after returning from Google Workspace OAuth
+  useEffect(() => {
+    const workspaceConnected = searchParams.get("workspace_connected");
+    const connectorError = searchParams.get("connector_error");
+    if (workspaceConnected === "1") {
+      setConnectorToast("Google Workspace connected!");
+      refreshConnectorStatus(); // Refresh badge immediately
+      router.replace("/settings");
+    } else if (connectorError) {
+      setConnectorToast(`Connection failed: ${connectorError.replace(/_/g, " ")}`);
+      router.replace("/settings");
+    }
+  }, [searchParams, router]);
 
   const [profile, setProfile] = useState({
     name: "",
@@ -64,17 +79,53 @@ export default function SettingsPage() {
     github: false,
   });
 
-  useEffect(() => {
+  const refreshConnectorStatus = () => {
     fetch("/api/connectors/status")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data) setConnectorStatus(data); })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshConnectorStatus();
   }, []);
+
+  // Memory state — ChatGPT-style persistent memories
+  const [memories, setMemories] = useState<Array<{ id: string; content: string }>>([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/memory")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.memories) setMemories(d.memories);
+      })
+      .catch(() => {})
+      .finally(() => setMemoriesLoading(false));
+  }, []);
+
+  async function deleteMemory(id: string) {
+    setMemories((s) => s.filter((m) => m.id !== id));
+    try {
+      await fetch(`/api/memory?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch {
+      // best-effort — refetch on failure
+      fetch("/api/memory").then((r) => r.json()).then((d) => d?.memories && setMemories(d.memories)).catch(() => {});
+    }
+  }
 
   async function handleConnect(provider: "google" | "github") {
     setConnectorLoading((s) => ({ ...s, [provider]: true }));
-    await signIn(provider);
-    // signIn redirects — loading state cleared on return
+    if (provider === "google") {
+      // Google Workspace connector — dedicated OAuth flow that requests
+      // workspace scopes (Gmail, Drive, Calendar, Docs) separately from login.
+      // Stored as "google-workspace" in connector_tokens, never overwritten by
+      // the basic login flow.
+      window.location.href = "/api/connectors/google/connect";
+    } else {
+      await signIn(provider);
+      // signIn redirects — loading state cleared on return
+    }
   }
 
   async function handleDisconnect(provider: "google" | "github") {
@@ -114,7 +165,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Connector toast notification */}
+      {connectorToast && (
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg transition-all
+            ${connectorToast.startsWith("Google Workspace connected")
+              ? "bg-emerald-500 text-white"
+              : "bg-red-500/90 text-white"}`}
+          onClick={() => setConnectorToast(null)}
+        >
+          {connectorToast}
+        </div>
+      )}
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -285,6 +348,45 @@ export default function SettingsPage() {
               <Plug size={10} /> connector toggle
             </span>{" "}
             in the chat input to activate workspace tools.
+          </p>
+        </section>
+
+        {/* Memory — ChatGPT-style persistent memory */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-300">
+            <Brain size={14} />
+            Memory
+          </div>
+          <div className="bg-surface-1 border border-white/8 rounded-xl p-5 space-y-3">
+            {memoriesLoading ? (
+              <Skeleton className="h-12 w-full rounded-lg" />
+            ) : memories.length === 0 ? (
+              <p className="text-xs text-gray-500">
+                No memories yet. Tell Surya AI things like &ldquo;remember I prefer dark mode&rdquo; or &ldquo;remember I work at Acme&rdquo; and they&apos;ll persist across all chats.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {memories.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-start justify-between gap-3 text-sm bg-surface-2 border border-white/8 rounded-lg px-3 py-2"
+                  >
+                    <span className="text-gray-300 break-words flex-1 min-w-0">{m.content}</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteMemory(m.id)}
+                      title="Delete memory"
+                      className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="text-xs text-gray-600">
+            Surya AI remembers facts you share so it can personalize replies across conversations. Delete any memory anytime.
           </p>
         </section>
 

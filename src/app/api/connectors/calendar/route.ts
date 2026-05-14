@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 /**
  * calendar connector — stubbed for edge-runtime build.

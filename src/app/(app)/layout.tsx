@@ -1,4 +1,3 @@
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -11,13 +10,16 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let session;
+  // Dynamic import + try/catch around BOTH the import AND the call so
+  // OpenNext/Cloudflare bundling errors during module evaluation don't
+  // bubble up as a generic 500. Falls through to /login on any failure
+  // and logs the real stack to wrangler logs.
+  let session: Awaited<ReturnType<typeof import("@/auth").auth>> | null = null;
   try {
+    const { auth } = await import("@/auth");
     session = await auth();
   } catch (err) {
-    // If auth() throws (Cloudflare Worker bundling issue, network failure, etc.),
-    // log full stack and fall through to /login redirect instead of returning 500.
-    console.error("[AppLayout] auth() threw:", err);
+    console.error("[AppLayout] auth import or call threw:", err);
     redirect("/login");
   }
 

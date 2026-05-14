@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { after } from "next/server";
 import { auth } from "@/auth";

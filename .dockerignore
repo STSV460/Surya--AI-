@@ -1,0 +1,9 @@
+node_modules
+.next
+.open-next
+.git
+.gitignore
+*.md
+.env*
+aws
+.github

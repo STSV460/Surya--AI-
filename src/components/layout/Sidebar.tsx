@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -13,6 +13,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/stores/chatStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useUserStore } from "@/stores/userStore";
@@ -41,11 +50,35 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleRename(id: string) {
+  function startRename(id: string) {
     const current = conversations.find((c) => c.id === id);
-    const next = prompt("Rename conversation", current?.title ?? "");
-    if (!next || next === current?.title) return;
+    setRenamingId(id);
+    setRenameValue(current?.title ?? "");
+    // focus on next tick once input mounts
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameValue("");
+  }
+
+  async function commitRename() {
+    if (!renamingId) return;
+    const id = renamingId;
+    const next = renameValue.trim();
+    const current = conversations.find((c) => c.id === id);
+    if (!next || next === current?.title) {
+      cancelRename();
+      return;
+    }
+    setRenamingId(null);
     const res = await fetch(`/api/conversations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -56,13 +89,17 @@ export function Sidebar() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this conversation? This cannot be undone.")) return;
+  async function confirmDelete() {
+    if (!deleteId) return;
+    setIsDeleting(true);
+    const id = deleteId;
     const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
     if (res.ok) {
       setConversations(conversations.filter((c) => c.id !== id));
       if (activeConversationId === id) router.replace("/chat");
     }
+    setIsDeleting(false);
+    setDeleteId(null);
   }
 
   useEffect(() => {
@@ -116,18 +153,41 @@ export function Sidebar() {
                 : "text-gray-400 hover:bg-surface-2/60 hover:text-white"
             )}
           >
-            <Link
-              href={`/chat/${conv.id}`}
-              className="flex items-center gap-2 px-3 py-2 flex-1 min-w-0 text-sm"
-            >
-              <MessageSquare size={13} className="shrink-0 opacity-50" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs">{conv.title || "New conversation"}</p>
-                <p className="text-[10px] text-gray-600">
-                  {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
-                </p>
+            {renamingId === conv.id ? (
+              <div className="flex items-center gap-2 px-3 py-2 flex-1 min-w-0">
+                <MessageSquare size={13} className="shrink-0 opacity-50" />
+                <input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitRename();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  onBlur={commitRename}
+                  autoFocus
+                  className="flex-1 min-w-0 bg-surface-2 text-xs text-white border border-surya-500/40 rounded px-2 py-1 outline-none focus:border-surya-500"
+                />
               </div>
-            </Link>
+            ) : (
+              <Link
+                href={`/chat/${conv.id}`}
+                className="flex items-center gap-2 px-3 py-2 flex-1 min-w-0 text-sm"
+              >
+                <MessageSquare size={13} className="shrink-0 opacity-50" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs">{conv.title || "New conversation"}</p>
+                  <p className="text-[10px] text-gray-600">
+                    {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
+                  </p>
+                </div>
+              </Link>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger
                 onClick={(e) => e.stopPropagation()}
@@ -137,11 +197,11 @@ export function Sidebar() {
                 <MoreHorizontal size={14} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-36">
-                <DropdownMenuItem onClick={() => handleRename(conv.id)}>
+                <DropdownMenuItem onClick={() => startRename(conv.id)}>
                   <Pencil size={12} className="mr-2" /> Rename
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => handleDelete(conv.id)}
+                  onClick={() => setDeleteId(conv.id)}
                   className="text-red-400 focus:text-red-400"
                 >
                   <Trash2 size={12} className="mr-2" /> Delete
@@ -165,7 +225,7 @@ export function Sidebar() {
       )}
     <aside
       className={cn(
-        "flex flex-col h-full bg-surface-1 border-r border-white/6 transition-all duration-200 shrink-0 overflow-hidden",
+        "flex flex-col h-full bg-[#151821] border-r border-white/6 transition-all duration-200 shrink-0 overflow-hidden",
         "md:relative md:translate-x-0",
         sidebarOpen ? "w-[260px]" : "w-0 md:w-0",
         "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-2xl"
@@ -261,8 +321,7 @@ export function Sidebar() {
       {/* User + settings */}
       <div className="border-t border-white/6 p-3 flex items-center gap-2.5">
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold text-white shrink-0"
-          style={{ background: "linear-gradient(135deg, #1A73E8, #4FC3F7)" }}
+          className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold text-white shrink-0 bg-surya-500"
         >
           {user?.name?.[0]?.toUpperCase() ?? "U"}
         </div>
@@ -283,6 +342,29 @@ export function Sidebar() {
         </Link>
       </div>
     </aside>
+
+    <Dialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete conversation?</DialogTitle>
+          <DialogDescription>
+            This conversation and its messages will be permanently removed. This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteId(null)} disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={confirmDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
 import { uploadBlobToBucket } from "@/lib/media/storage";
@@ -22,15 +21,20 @@ const ALLOWED_MEDIA_TYPES = new Set([
   "audio/webm",
 ]);
 
+const ALLOWED_KINDS = new Set(["upload", "image", "video", "audio", "avatar", "film"]);
+
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
   const form = await req.formData();
   const file = form.get("file");
-  const kind = (form.get("kind") as string) || "upload";
+  const kind = String(form.get("kind") || "upload").trim();
   if (!(file instanceof Blob)) {
     return Response.json({ error: "file is required" }, { status: 400 });
+  }
+  if (!ALLOWED_KINDS.has(kind)) {
+    return Response.json({ error: "Invalid media kind" }, { status: 400 });
   }
 
   // Size validation

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp, Image as ImageIcon, Video } from "lucide-react";
+import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AttachedFile {
@@ -27,19 +27,21 @@ interface InputBarProps {
   onDeepResearch?: (question: string) => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnectors, onToggleConnectors, enableWebSearch, onToggleWebSearch, enableImageGen, onToggleImageGen, enableVideoGen, onToggleVideoGen, onDeepResearch }: InputBarProps) {
+export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnectors, onToggleConnectors, enableWebSearch, onToggleWebSearch, onDeepResearch }: InputBarProps) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
 
   const charCount = value.length;
+  const canSend = (!!value.trim() || attachments.length > 0) && !disabled;
 
   // Count active tools for badge
-  const activeToolCount = [enableConnectors, enableWebSearch, enableImageGen, enableVideoGen].filter(Boolean).length;
+  const activeToolCount = [enableConnectors, enableWebSearch].filter(Boolean).length;
 
   // Close tools popup on outside click
   useEffect(() => {
@@ -51,6 +53,13 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [value]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey && !isStreaming) {
@@ -112,7 +121,7 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
   return (
     <div
       className={cn(
-        "bg-surface-1 border border-white/10 rounded-[20px] shadow-[0_4px_24px_rgba(0,0,0,0.3)] transition-all duration-150",
+        "bg-[#1b1e28]/95 border border-white/10 rounded-[22px] shadow-[0_14px_46px_rgba(0,0,0,0.28)] transition-all duration-150",
         "focus-within:border-surya-500/50 focus-within:ring-[3px] focus-within:ring-surya-500/12"
       )}
     >
@@ -149,11 +158,12 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
 
       {/* Textarea */}
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Ask anything…"
+        placeholder="Message Surya AI"
         rows={1}
         style={{ minHeight: "52px", maxHeight: "240px", resize: "none" }}
         className="w-full bg-transparent px-5 pt-4 pb-1 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none overflow-y-auto"
@@ -331,10 +341,10 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
             <button
               type="button"
               onClick={handleSend}
-              disabled={!value.trim() || disabled}
+              disabled={!canSend}
               className={cn(
                 "h-8 w-8 flex items-center justify-center rounded-xl transition-colors",
-                value.trim() && !disabled
+                canSend
                   ? "bg-surya-500 hover:bg-surya-700 text-white"
                   : "bg-surface-2 text-gray-600 cursor-not-allowed"
               )}

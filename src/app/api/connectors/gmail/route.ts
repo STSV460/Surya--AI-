@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 /**
  * gmail connector — stubbed for edge-runtime build.

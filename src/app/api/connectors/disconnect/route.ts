@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
@@ -17,17 +16,20 @@ export async function DELETE(req: Request) {
     return Response.json({ error: "Invalid provider. Must be 'google' or 'github'." }, { status: 400 });
   }
 
+  // Google workspace connector is stored under "google-workspace" provider key
+  const providerKey = provider === "google" ? "google-workspace" : provider;
+
   const userId = session.user.id;
 
   const existing = (await db.connectorTokens("findOne", {
-    filter: { userId, provider },
+    filter: { userId, provider: providerKey },
   })) as { document: ConnectorToken | null };
 
   if (!existing.document) {
     return Response.json({ error: "Not connected" }, { status: 404 });
   }
 
-  await db.connectorTokens("deleteOne", { filter: { userId, provider } });
+  await db.connectorTokens("deleteOne", { filter: { userId, provider: providerKey } });
 
   return Response.json({ success: true });
 }

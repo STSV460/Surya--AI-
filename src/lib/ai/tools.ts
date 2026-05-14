@@ -3,7 +3,7 @@
  * and server-side executor that dispatches to /api/connectors/* routes.
  */
 
-const APP_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+import { getAppUrl } from "@/lib/app-url";
 
 // ---------------------------------------------------------------------------
 // Tool schemas
@@ -265,27 +265,110 @@ export const CONNECTOR_TOOLS = [
       },
     },
   },
+
+  // Memory — persistent across conversations
+  {
+    type: "function",
+    function: {
+      name: "save_memory",
+      description:
+        "Save a fact about the user that should persist across conversations (like ChatGPT's memory feature). Use when the user explicitly says 'remember this', 'save this', or shares a stable preference/fact (e.g. 'I prefer dark mode', 'my dog's name is Rex', 'I work at Acme'). Don't save trivial one-off context.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description: "Concise memory fact (one sentence, under 200 chars)",
+          },
+        },
+        required: ["content"],
+      },
+    },
+  },
+
+  // Google Slides
+  {
+    type: "function",
+    function: {
+      name: "create_google_slides",
+      description:
+        "Generate a real Google Slides presentation in the user's Google Drive. Use when the user asks to create slides, a deck, a presentation, or a slideshow about any topic. Returns a shareable Google Slides link.",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: { type: "string", description: "What the presentation should be about" },
+          slides: { type: "number", description: "Approximate number of slides (default 10, max 20)" },
+        },
+        required: ["topic"],
+      },
+    },
+  },
+
+  // Google Sheets
+  {
+    type: "function",
+    function: {
+      name: "create_google_sheets",
+      description:
+        "Generate a real Google Sheets spreadsheet in the user's Google Drive. Use when the user asks to create a sheet, spreadsheet, table, or data file with rows and columns about any topic. Returns a shareable Google Sheets link.",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: { type: "string", description: "What the sheet should contain" },
+          rows: { type: "number", description: "How many data rows to populate (default 20, max 100)" },
+        },
+        required: ["topic"],
+      },
+    },
+  },
+
+  // Google Docs
+  {
+    type: "function",
+    function: {
+      name: "create_google_docs",
+      description:
+        "Generate a real Google Docs document in the user's Google Drive. Use when the user asks to write a document, report, essay, article, or doc about any topic. Returns a shareable Google Docs link.",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: { type: "string", description: "What the document should be about" },
+          length: {
+            type: "string",
+            enum: ["short", "medium", "long"],
+            description: "Document length (default medium)",
+          },
+          tone: { type: "string", description: "Writing tone (e.g. professional, casual, academic)" },
+        },
+        required: ["topic"],
+      },
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
 // Route mapping
 // ---------------------------------------------------------------------------
 
-const TOOL_ROUTE_MAP: Record<string, { path: string; action: string }> = {
-  web_search:             { path: "/api/connectors/search",   action: "search" },
-  gmail_search:           { path: "/api/connectors/gmail",    action: "search" },
-  gmail_read:             { path: "/api/connectors/gmail",    action: "read" },
-  gmail_send:             { path: "/api/connectors/gmail",    action: "send" },
-  drive_list:             { path: "/api/connectors/drive",    action: "list" },
-  drive_read:             { path: "/api/connectors/drive",    action: "read" },
-  calendar_list_events:   { path: "/api/connectors/calendar", action: "list_events" },
-  calendar_create_event:  { path: "/api/connectors/calendar", action: "create_event" },
-  docs_read:              { path: "/api/connectors/docs",     action: "read" },
-  image_gen:              { path: "/api/image-gen",           action: "generate" },
-  github_list_repos:      { path: "/api/connectors/github",   action: "list_repos" },
-  github_list_issues:     { path: "/api/connectors/github",   action: "list_issues" },
-  github_create_issue:    { path: "/api/connectors/github",   action: "create_issue" },
-};
+export const TOOL_METADATA = {
+  web_search:             { path: "/api/connectors/search",        action: "search",       kind: "read",  requiresConfirmation: false },
+  gmail_search:           { path: "/api/connectors/gmail",         action: "search",       kind: "read",  requiresConfirmation: false },
+  gmail_read:             { path: "/api/connectors/gmail",         action: "read",         kind: "read",  requiresConfirmation: false },
+  drive_list:             { path: "/api/connectors/drive",         action: "list",         kind: "read",  requiresConfirmation: false },
+  drive_read:             { path: "/api/connectors/drive",         action: "read",         kind: "read",  requiresConfirmation: false },
+  calendar_list_events:   { path: "/api/connectors/calendar",      action: "list_events",  kind: "read",  requiresConfirmation: false },
+  docs_read:              { path: "/api/connectors/docs",          action: "read",         kind: "read",  requiresConfirmation: false },
+  github_list_repos:      { path: "/api/connectors/github",        action: "list_repos",   kind: "read",  requiresConfirmation: false },
+  github_list_issues:     { path: "/api/connectors/github",        action: "list_issues",  kind: "read",  requiresConfirmation: false },
+  image_gen:              { path: "/api/image-gen",                action: "generate",     kind: "write", requiresConfirmation: true },
+  save_memory:            { path: "/api/memory",                   action: "save",         kind: "write", requiresConfirmation: true },
+  gmail_send:             { path: "/api/connectors/gmail",         action: "send",         kind: "write", requiresConfirmation: true },
+  calendar_create_event:  { path: "/api/connectors/calendar",      action: "create_event", kind: "write", requiresConfirmation: true },
+  github_create_issue:    { path: "/api/connectors/github",        action: "create_issue", kind: "write", requiresConfirmation: true },
+  create_google_slides:   { path: "/api/connectors/google-slides", action: "create",       kind: "write", requiresConfirmation: true },
+  create_google_sheets:   { path: "/api/connectors/google-sheets", action: "create",       kind: "write", requiresConfirmation: true },
+  create_google_docs:     { path: "/api/connectors/google-docs",   action: "create",       kind: "write", requiresConfirmation: true },
+} as const;
 
 // ---------------------------------------------------------------------------
 // Filtered tool sets
@@ -296,15 +379,21 @@ export const WEB_SEARCH_TOOLS = CONNECTOR_TOOLS.filter(
   (t) => t.function.name === "web_search"
 );
 
-/** All connector tools except web_search and image_gen — those are added separately */
+/** All connector tools except web_search, image_gen, and always-on tools (memory) */
 export const CONNECTOR_TOOLS_WITHOUT_SEARCH = CONNECTOR_TOOLS.filter(
-  (t) => t.function.name !== "web_search" && t.function.name !== "image_gen"
+  (t) =>
+    TOOL_METADATA[t.function.name as keyof typeof TOOL_METADATA]?.kind === "read" &&
+    t.function.name !== "web_search" &&
+    t.function.name !== "image_gen"
 );
 
 /** Only the image_gen tool */
 export const IMAGE_GEN_TOOLS = CONNECTOR_TOOLS.filter(
   (t) => t.function.name === "image_gen"
 );
+
+/** No write tools run automatically until the UI has explicit confirmation UX. */
+export const ALWAYS_ON_TOOLS: typeof CONNECTOR_TOOLS = [];
 
 // ---------------------------------------------------------------------------
 // Executor
@@ -319,13 +408,19 @@ export async function executeTool(
   toolInput: Record<string, unknown>,
   cookie: string
 ): Promise<string> {
-  const route = TOOL_ROUTE_MAP[toolName];
+  const route = TOOL_METADATA[toolName as keyof typeof TOOL_METADATA];
   if (!route) {
     return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
+  if (route.requiresConfirmation) {
+    return JSON.stringify({
+      error: `Tool ${toolName} requires explicit user confirmation and cannot run automatically.`,
+      code: "CONFIRMATION_REQUIRED",
+    });
+  }
 
   try {
-    const res = await fetch(`${APP_URL}${route.path}`, {
+    const res = await fetch(`${getAppUrl()}${route.path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,11 +1,34 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
 import { getGitHubToken, isConnectorError } from "@/lib/google-apis";
 import axios from "axios";
 import { connectorLimiter } from "@/lib/rate-limit";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 
 const GITHUB_API = "https://api.github.com";
+const repoPart = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/);
+const githubBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("list_repos"),
+    maxResults: z.coerce.number().int().min(1).max(30).optional().default(10),
+  }),
+  z.object({
+    action: z.literal("list_issues"),
+    owner: repoPart,
+    repo: repoPart,
+    state: z.enum(["open", "closed", "all"]).optional().default("open"),
+  }),
+  z.object({
+    action: z.literal("create_issue"),
+    owner: repoPart,
+    repo: repoPart,
+    title: z.string().trim().min(1).max(256),
+    body: z.string().trim().max(8000).optional().default(""),
+    labels: z.array(z.string().trim().min(1).max(64)).max(10).optional().default([]),
+    confirmed: z.boolean().optional().default(false),
+  }),
+]);
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -23,7 +46,8 @@ export async function POST(req: Request) {
   }
 
   const userId = session.user.id;
-  const body = await req.json();
+  const body = await parseJson(req, githubBodySchema);
+  if (isResponse(body)) return body;
   const { action } = body;
 
   try {
@@ -35,10 +59,9 @@ export async function POST(req: Request) {
     };
 
     if (action === "list_repos") {
-      const { maxResults = 10 } = body;
       const res = await axios.get(`${GITHUB_API}/user/repos`, {
         headers,
-        params: { per_page: Math.min(maxResults, 30), sort: "updated" },
+        params: { per_page: body.maxResults, sort: "updated" },
       });
 
       const repos = res.data.map((r: Record<string, unknown>) => ({
@@ -79,7 +102,16 @@ export async function POST(req: Request) {
     }
 
     if (action === "create_issue") {
-      const { owner, repo, title, body: issueBody, labels = [] } = body;
+      if (!body.confirmed) {
+        return Response.json(
+          {
+            error: "Creating GitHub issues requires explicit user confirmation.",
+            code: "CONFIRMATION_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+      const { owner, repo, title, body: issueBody, labels } = body;
       const res = await axios.post(
         `${GITHUB_API}/repos/${owner}/${repo}/issues`,
         { title, body: issueBody, labels },

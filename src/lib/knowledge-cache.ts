@@ -1,4 +1,9 @@
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
+// 30 seconds — short TTL because cache is per-Vercel-instance.
+// `invalidateCache` only clears the current instance, so stale entries on
+// other warm instances would otherwise persist for the old (5 min) TTL.
+// 30s gives ~free perf for repeated requests in same conversation while
+// guaranteeing edits propagate fast across the fleet.
+const TTL_MS = 30 * 1000;
 
 interface CacheEntry {
   content: string;

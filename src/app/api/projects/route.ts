@@ -1,8 +1,14 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 // randomUUID via globalThis.crypto (Web Crypto API)
 
-export const runtime = "edge";
+const createProjectSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(1000).optional().default(""),
+  systemPrompt: z.string().trim().max(8000).optional().default(""),
+});
 
 // GET /api/projects — list user's projects
 export async function GET() {
@@ -25,16 +31,16 @@ export async function POST(req: Request) {
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
   const userId = (session.user as { id: string }).id;
 
-  const { name, description, systemPrompt } = await req.json();
-  if (!name?.trim()) return new Response("Name required", { status: 400 });
+  const body = await parseJson(req, createProjectSchema);
+  if (isResponse(body)) return body;
 
   const now = new Date().toISOString();
   const project = {
-    id: randomUUID(),
+    id: crypto.randomUUID(),
     userId,
-    name: name.trim(),
-    description: description?.trim() ?? "",
-    systemPrompt: systemPrompt?.trim() ?? "",
+    name: body.name,
+    description: body.description,
+    systemPrompt: body.systemPrompt,
     createdAt: now,
     updatedAt: now,
   };

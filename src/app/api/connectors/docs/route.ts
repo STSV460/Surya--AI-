@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 /**
  * docs connector — stubbed for edge-runtime build.

@@ -104,9 +104,9 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
   }, [completedArtifact]);
 
   return (
-    <div className="relative flex h-full overflow-hidden">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(26,115,232,0.055),transparent_34%),#0f1117]">
       {/* Chat column */}
-      <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full">
+      <div className="relative z-10 flex flex-col flex-1 min-w-0 min-h-0 h-full">
         <MessageList
           messages={messages}
           isStreaming={isStreaming}
@@ -128,7 +128,7 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           </div>
         )}
 
-        <div className={`px-4 pb-6 pt-2 w-full ${artifactPanelOpen ? "max-w-2xl" : "max-w-3xl"} mx-auto`}>
+        <div className={`px-4 pb-5 pt-2 w-full ${artifactPanelOpen ? "max-w-2xl" : "max-w-3xl"} mx-auto`}>
           <InputBar
             onSend={(content) => sendMessage(content, conversationId)}
             onStop={stopStreaming}

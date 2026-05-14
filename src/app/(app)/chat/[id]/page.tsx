@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { ChatInterface } from "@/components/chat/ChatInterface";
 

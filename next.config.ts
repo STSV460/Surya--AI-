@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Required for @webcontainer/api (App Builder feature) + security hardening
+  // Required for @webcontainer/api (App Builder feature) + security hardening.
+  // CSP and request-aware auth redirects live in src/proxy.ts.
   async headers() {
     return [
       {
@@ -28,10 +29,6 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Cloudflare Pages handles deployment automatically (standalone not required)
-  // output: "standalone",
-
-
   // Allow images from external sources
   images: {
     remotePatterns: [
@@ -42,14 +39,6 @@ const nextConfig: NextConfig = {
 
   // Required to silence Turbopack config conflict warning in Next.js 16
   turbopack: {},
-
-  // Disable memory-heavy checks during Cloudflare build
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 };
 
 

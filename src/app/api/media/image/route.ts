@@ -1,10 +1,11 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
 import { MODEL_MAP } from "@/lib/ai/client";
 import { uploadBase64ToBucket, uploadUrlToBucket } from "@/lib/media/storage";
 import { createAsset } from "@/lib/media/assets";
 import { aiLimiter } from "@/lib/rate-limit";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 
 export const maxDuration = 300;
 
@@ -15,6 +16,10 @@ interface ImageOut {
   b64Json?: string;
   b64_json?: string;
 }
+
+const imageSchema = z.object({
+  prompt: z.string().trim().min(1).max(4000),
+});
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -29,14 +34,9 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { prompt?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const prompt = body.prompt;
-  if (!prompt) return Response.json({ error: "prompt is required" }, { status: 400 });
+  const body = await parseJson(req, imageSchema);
+  if (isResponse(body)) return body;
+  const { prompt } = body;
 
   const userId = session.user.id;
   try {

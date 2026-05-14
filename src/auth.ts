@@ -30,18 +30,12 @@ const config: NextAuthConfig = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: [
-            "openid email profile",
-            "https://www.googleapis.com/auth/gmail.readonly",
-            "https://www.googleapis.com/auth/gmail.send",
-            "https://www.googleapis.com/auth/drive.readonly",
-            "https://www.googleapis.com/auth/calendar",
-            "https://www.googleapis.com/auth/documents",
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/presentations",
-          ].join(" "),
+          // Basic scopes only at login — no sensitive/restricted scopes.
+          // Gmail, Drive, Calendar etc. are requested separately when user
+          // connects Google Workspace via Settings → Connectors.
+          scope: "openid email profile",
           access_type: "offline",
-          prompt: "consent", // REQUIRED on every login to receive refresh_token
+          prompt: "select_account",
         },
       },
     }),
@@ -60,99 +54,114 @@ const config: NextAuthConfig = {
   },
 
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (!account || !user.email) return false;
+
+      // --- Email verification gate (prevents account takeover) -----------------
+      // OAuth providers can return unverified secondary emails. Without this
+      // check, an attacker could add a victim's email as a secondary unverified
+      // address on their own GitHub/Google account, then log into Surya as the
+      // victim through email-based identity merge. Reject any login where the
+      // returned email is not provably owned by the OAuth principal.
+      if (account.provider === "google") {
+        const verified = (profile as { email_verified?: boolean })?.email_verified;
+        if (verified !== true) {
+          console.warn("[auth] REJECT Google login: email_verified !== true", user.email);
+          return false;
+        }
+      }
+      if (account.provider === "github") {
+        try {
+          const r = await fetch("https://api.github.com/user/emails", {
+            headers: {
+              Authorization: `Bearer ${account.access_token}`,
+              "User-Agent": "surya-ai-auth",
+              Accept: "application/vnd.github+json",
+            },
+          });
+          if (!r.ok) {
+            console.warn("[auth] REJECT GitHub login: /user/emails fetch failed", r.status);
+            return false;
+          }
+          const emails = (await r.json()) as Array<{
+            email: string;
+            verified: boolean;
+            primary: boolean;
+          }>;
+          const ok = emails.some(
+            (e) => e.email === user.email && e.verified === true && e.primary === true
+          );
+          if (!ok) {
+            console.warn(
+              "[auth] REJECT GitHub login: email not verified+primary on GitHub",
+              user.email
+            );
+            return false;
+          }
+        } catch (err) {
+          console.warn("[auth] REJECT GitHub login: email verification error", err);
+          return false;
+        }
+      }
 
       try {
         const now = new Date().toISOString();
         const provider = account.provider; // "google" | "github"
         const providerAccountId = String(account.providerAccountId ?? "");
 
-        // --- Identity resolution (provider-scoped, not email-only) --------------
-        // 1. First, try to find an existing profile linked to this exact
-        //    (provider, providerAccountId). That's the stable identity.
-        // 2. If not found, try by email. If the email belongs to a profile
-        //    that was created by a *different* provider account, REJECT the
-        //    login to prevent cross-account data leakage (two different
-        //    humans who happen to share an email address must not share
-        //    a profile).
-        // 3. Otherwise create a new profile and stamp the provider account ID.
+        // --- Identity resolution: EMAIL-BASED (ChatGPT-style) -------------------
+        // Email is the primary identity. Multiple OAuth providers (Google, GitHub)
+        // map to the same profile if email matches. The `username` field stores
+        // comma-separated provider keys for tracking which providers are linked.
         //
-        // The profile's `username` column is (re)used to store the
-        // provider-scoped identity: `{provider}:{providerAccountId}`. This
-        // avoids a schema migration but gives us a stable, provider-scoped
-        // unique key to look profiles up by.
+        // Trade-off: if two humans share an email, they share a profile.
+        // Acceptable because OAuth providers verify email ownership.
         const providerKey = `${provider}:${providerAccountId}`;
 
-        // 1. Lookup by provider key (stored in username column)
-        const { data: byProvider } = await db
+        // Lookup by email (primary key)
+        const { data: byEmail } = await db
           .from("profiles")
-          .select("id,email")
-          .eq("username", providerKey)
+          .select("id,username")
+          .eq("email", user.email)
           .maybeSingle();
 
-        let resolvedProfileId: string | null = byProvider?.id ?? null;
+        let resolvedProfileId: string | null = byEmail?.id ?? null;
 
         if (resolvedProfileId) {
-          // Refresh display info
+          // Existing profile — append this provider key if not already linked
+          const existingKeys = (byEmail!.username ?? "")
+            .split(",")
+            .map((k: string) => k.trim())
+            .filter(Boolean);
+          if (!existingKeys.includes(providerKey)) {
+            existingKeys.push(providerKey);
+          }
           await db
             .from("profiles")
             .update({
-              email: user.email,
+              username: existingKeys.join(","),
               display_name: user.name ?? undefined,
               avatar_url: user.image ?? undefined,
               updated_at: now,
             })
             .eq("id", resolvedProfileId);
         } else {
-          // 2. Lookup by email
-          const { data: byEmail } = await db
+          // Brand-new profile
+          const { data: inserted } = await db
             .from("profiles")
-            .select("id,username")
-            .eq("email", user.email)
+            .insert({
+              email: user.email,
+              display_name: user.name ?? "",
+              avatar_url: user.image ?? "",
+              username: providerKey,
+              role: "user",
+              account_status: "active",
+              created_at: now,
+              updated_at: now,
+            })
+            .select("id")
             .maybeSingle();
-
-          if (byEmail) {
-            const existingKey = (byEmail.username ?? "") as string;
-            // If the stored profile has a DIFFERENT provider account id,
-            // refuse to merge — that would be a cross-user data leak.
-            if (existingKey.includes(":") && existingKey !== providerKey) {
-              const storedProvider = existingKey.split(":")[0];
-              console.warn(
-                `[auth] REJECT cross-provider login: email ${user.email} already linked to ${storedProvider}`
-              );
-              // Returning a string redirects the user to an error page in NextAuth v5.
-              return `/login?error=ProviderLinked&provider=${storedProvider}`;
-            }
-            // Legacy row (no provider key yet) — claim it for this provider.
-            resolvedProfileId = byEmail.id as string;
-            await db
-              .from("profiles")
-              .update({
-                username: providerKey,
-                display_name: user.name ?? undefined,
-                avatar_url: user.image ?? undefined,
-                updated_at: now,
-              })
-              .eq("id", resolvedProfileId);
-          } else {
-            // 3. Brand new profile
-            const { data: inserted } = await db
-              .from("profiles")
-              .insert({
-                email: user.email,
-                display_name: user.name ?? "",
-                avatar_url: user.image ?? "",
-                username: providerKey,
-                role: "user",
-                account_status: "active",
-                created_at: now,
-                updated_at: now,
-              })
-              .select("id")
-              .maybeSingle();
-            resolvedProfileId = (inserted?.id as string) ?? null;
-          }
+          resolvedProfileId = (inserted?.id as string) ?? null;
         }
 
         // --- Persist OAuth tokens keyed by userId (not email) ------------------
@@ -200,15 +209,14 @@ const config: NextAuthConfig = {
     },
 
     async jwt({ token, user, account, trigger }) {
-      // Populate userId on signIn via (provider, providerAccountId), never
-      // by email alone — email lookup is what caused the cross-account leak.
+      // Populate userId on signIn by EMAIL (ChatGPT-style identity).
+      // Same email across providers = same profile.
       if (trigger === "signIn" && account && user?.email) {
         try {
-          const providerKey = `${account.provider}:${String(account.providerAccountId ?? "")}`;
           const { data } = await db
             .from("profiles")
             .select("id")
-            .eq("username", providerKey)
+            .eq("email", user.email)
             .maybeSingle();
           if (data?.id) token.userId = data.id as string;
         } catch {

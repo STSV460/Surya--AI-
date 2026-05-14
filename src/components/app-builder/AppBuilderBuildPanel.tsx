@@ -122,6 +122,7 @@ export function AppBuilderBuildPanel({
   // Listen for element-picked messages from iframe
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      if (e.source !== iframeRef.current?.contentWindow) return;
       if (e.data?.type !== "element-picked") return;
       const d = e.data;
       const parts = [

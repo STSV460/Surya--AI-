@@ -1,6 +1,5 @@
 "use client";
 
-export const runtime = "edge";
 
 import { useCallback, useRef, useState } from "react";
 import { useAppBuilder } from "@/hooks/useAppBuilder";

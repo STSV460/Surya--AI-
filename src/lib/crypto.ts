@@ -128,3 +128,38 @@ export async function decryptOrPlain(value: string): Promise<string> {
   const decrypted = await decrypt(value);
   return decrypted ?? value;
 }
+
+// ---------------------------------------------------------------------------
+// HMAC-SHA256 helpers — used for signing OAuth state, CSRF tokens, etc.
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute HMAC-SHA256 of `data` keyed by `secret`. Returns hex string.
+ * Uses Web Crypto API (works in Edge + Node runtimes).
+ */
+export async function hmacSha256(data: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(data)));
+  return bytesToHex(sig);
+}
+
+/**
+ * Constant-time string comparison (prevents timing attacks on signatures).
+ * Returns true iff `a === b`. Safe even when lengths differ.
+ */
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}

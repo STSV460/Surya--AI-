@@ -89,7 +89,7 @@ export function PreviewPane({ url, status, terminalOutput }: PreviewPaneProps) {
           ref={iframeRef}
           src={url}
           className="flex-1 border-0 w-full"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+          sandbox="allow-scripts allow-forms allow-modals"
           title="App Preview"
         />
       ) : (

@@ -6,9 +6,14 @@ import { ArrowRight } from "lucide-react";
 
 export default function LandingPage() {
   return (
-    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-background">
+    <main
+      role="main"
+      aria-label="Surya AI landing page"
+      className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-background"
+    >
       {/* CSS radial glow background — no Three.js */}
       <div
+        aria-hidden="true"
         className="pointer-events-none absolute inset-0"
         style={{
           background:
@@ -17,11 +22,16 @@ export default function LandingPage() {
       />
 
       {/* Foreground content */}
-      <div className="relative z-10 flex flex-col items-center gap-6 px-4 text-center">
+      <section
+        aria-labelledby="hero-heading"
+        className="relative z-10 flex flex-col items-center gap-6 px-4 text-center"
+      >
         {/* Logo */}
         <Image
           src="/logo.png"
-          alt="Surya AI — The Smartest Free AI for Students"
+          alt="Surya AI logo"
+          aria-label="Surya AI logo"
+          role="img"
           width={72}
           height={72}
           className="rounded-2xl"
@@ -29,33 +39,48 @@ export default function LandingPage() {
         />
 
         {/* Wordmark */}
-        <h1 className="text-5xl font-bold tracking-tight text-white sm:text-6xl">
+        <h1
+          id="hero-heading"
+          aria-label="Surya AI"
+          className="text-5xl font-bold tracking-tight text-white sm:text-6xl"
+        >
           Surya <span className="text-surya-500">AI</span>
         </h1>
 
         {/* Tagline */}
-        <h2 className="text-lg text-gray-400 max-w-sm">
+        <h2
+          aria-label="Tagline"
+          className="text-lg text-gray-400 max-w-sm"
+        >
           The AI that thinks with you — Free AI for Students & Devs
         </h2>
 
         {/* Sub-description */}
-        <p className="text-sm text-gray-600 max-w-md">
-          Surya AI is a production-grade AI assistant for deep research, coding, and multi-agent automation. 
-          Powered by Claude 3.5 Sonnet & Opus. No prompting expertise required.
+        <p
+          aria-label="Description"
+          className="text-sm text-gray-600 max-w-md"
+        >
+          Surya AI is a production-grade AI assistant for deep research, coding, and multi-agent automation.
+          Powered by Claude Sonnet 4.6 & Opus. No prompting expertise required.
         </p>
 
         {/* CTA */}
         <Link
           href="/chat"
+          aria-label="Start for free — go to Surya AI chat"
+          role="button"
           className="flex items-center gap-2 px-6 py-3 rounded-xl bg-surya-500 hover:bg-surya-700
             text-white font-medium text-sm transition-colors mt-2"
         >
           Start for free
-          <ArrowRight size={15} />
+          <ArrowRight size={15} aria-hidden="true" />
         </Link>
 
         {/* Feature pills */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+        <ul
+          aria-label="Surya AI features"
+          className="flex flex-wrap items-center justify-center gap-2 mt-2 list-none p-0 m-0"
+        >
           {[
             "Multi-model AI",
             "Extended Thinking",
@@ -64,14 +89,15 @@ export default function LandingPage() {
             "Voice Mode",
             "App Builder",
           ].map((feat) => (
-            <span
+            <li
               key={feat}
+              aria-label={feat}
               className="px-3 py-1 rounded-full text-xs border border-white/10 text-gray-500 bg-surface-1/50"
             >
               {feat}
-            </span>
+            </li>
           ))}
-        </div>
+        </ul>
 
         {/* Hidden SEO Keywords Section (For Google) */}
         <section className="sr-only">
@@ -83,20 +109,29 @@ export default function LandingPage() {
           <h3>Free AI Tools for Coding</h3>
           <p>
             Build apps instantly with our AI App Builder. Use the smartest AI for coding and debugging with 
-            Claude 3.5 Sonnet integration.
+            Claude Sonnet 4.6 integration.
           </p>
         </section>
 
         {/* Mini SEO Footer */}
-        <footer className="absolute bottom-8 flex gap-6 text-[10px] uppercase tracking-widest text-gray-600">
-          <Link href="/chat" className="hover:text-surya-500 transition-colors">Chat</Link>
-          <Link href="/research" className="hover:text-surya-500 transition-colors">Research</Link>
-          <Link href="/agent" className="hover:text-surya-500 transition-colors">Agents</Link>
-          <span className="opacity-30">|</span>
-          <span className="">© 2026 Surya AI India</span>
+        <footer
+          role="contentinfo"
+          aria-label="Site footer"
+          className="absolute bottom-8 flex gap-6 text-[10px] uppercase tracking-widest text-gray-600"
+        >
+          <nav aria-label="Footer navigation" className="flex gap-6">
+            <Link href="/chat" aria-label="Open Chat" className="hover:text-surya-500 transition-colors">Chat</Link>
+            <Link href="/projects" aria-label="View Projects" className="hover:text-surya-500 transition-colors">Projects</Link>
+            <Link href="/app-builder" aria-label="Open App Builder" className="hover:text-surya-500 transition-colors">App Builder</Link>
+            <span aria-hidden="true" className="opacity-30">|</span>
+            <Link href="/privacy" aria-label="Privacy Policy" className="hover:text-surya-500 transition-colors">Privacy</Link>
+            <Link href="/terms" aria-label="Terms of Service" className="hover:text-surya-500 transition-colors">Terms</Link>
+          </nav>
+          <span aria-hidden="true" className="opacity-30">|</span>
+          <span aria-label="Copyright">© 2026 Surya AI India</span>
         </footer>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 

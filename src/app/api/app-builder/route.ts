@@ -1,9 +1,28 @@
 import { auth } from "@/auth";
 import { aiClient, MODEL_MAP } from "@/lib/ai/client";
 import { aiLimiter } from "@/lib/rate-limit";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 
-export const runtime = "edge";
 export const maxDuration = 300;
+
+const appBuilderSchema = z.object({
+  mode: z.enum(["generate", "edit", "clarify", "followups"]).optional().default("generate"),
+  prompt: z.string().trim().min(1).max(30_000),
+  currentFiles: z.record(z.string().max(240), z.string().max(250_000)).optional().default({}),
+  chatHistory: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string().max(30_000),
+      })
+    )
+    .max(50)
+    .optional()
+    .default([]),
+  clarifyAnswers: z.record(z.string().max(120), z.string().max(4000)).optional().default({}),
+  images: z.array(z.string().max(2_000_000)).max(8).optional().default([]),
+});
 
 function isSimpleApp(prompt: string): boolean {
   const lower = prompt.toLowerCase();
@@ -200,19 +219,8 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: {
-    mode?: string;
-    prompt?: string;
-    currentFiles?: Record<string, string>;
-    chatHistory?: { role: string; content: string }[];
-    clarifyAnswers?: Record<string, string>;
-    images?: string[];
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const body = await parseJson(req, appBuilderSchema);
+  if (isResponse(body)) return body;
 
   const mode =
     body.mode === "edit"
@@ -355,10 +363,17 @@ export async function POST(req: Request) {
             }
           : { role: "user", content: userContent };
 
-        // Stream the AI response
+        // Pick model by complexity: simple apps (calculator, portfolio,
+        // landing) → Sonnet 4.6 (fast, cheap). Complex/full-stack/Next.js
+        // production apps → Opus 4.6 (deeper reasoning, longer context).
+        // Edit mode always uses Opus since edits to existing code benefit
+        // from deeper reasoning over the existing files.
+        const builderModel =
+          mode === "edit" ? MODEL_MAP.opus : isSimpleApp(prompt) ? MODEL_MAP.sonnet : MODEL_MAP.opus;
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const completion = await (aiClient.chat.completions.create as any)({
-          model: MODEL_MAP.sonnet,
+          model: builderModel,
           messages: [
             { role: "system", content: systemPrompt },
             userMessage,

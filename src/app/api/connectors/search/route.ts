@@ -1,9 +1,23 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
 import * as cheerio from "cheerio";
-import { isSafeUrl, normalizeSearchResults } from "@/lib/web-utils";
+import { safeFetch, normalizeSearchResults } from "@/lib/web-utils";
 import { connectorLimiter } from "@/lib/rate-limit";
+import { aiClient } from "@/lib/ai/client";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
+
+const searchBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("search"),
+    query: z.string().trim().min(1).max(500),
+    limit: z.coerce.number().int().min(1).max(10).optional().default(5),
+  }),
+  z.object({
+    action: z.literal("scrape"),
+    url: z.string().trim().url().max(2048),
+  }),
+]);
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -20,103 +34,79 @@ export async function POST(req: Request) {
     );
   }
 
-  const body = await req.json();
-  const { action, query, url, limit } = body as {
-    action: "search" | "scrape";
-    query?: string;
-    url?: string;
-    limit?: number;
-  };
+  const body = await parseJson(req, searchBodySchema);
+  if (isResponse(body)) return body;
+  const { action } = body;
 
   try {
     if (action === "search") {
-      if (!query) {
-        return Response.json({ error: "query is required" }, { status: 400 });
-      }
+      const cap = body.limit;
+      // Kimi K2.5 via InsForge gateway — long context, fast, supports
+      // InsForge's webSearch annotations with grounded citations.
+      const model = process.env.WEB_SEARCH_MODEL ?? "moonshotai/kimi-k2.5";
 
-      const cap = limit ?? 5;
-
-      // Primary: Brave Search API (if key is configured)
-      if (process.env.BRAVE_SEARCH_API_KEY) {
-        const braveRes = await fetch(
-          `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${cap}`,
-          {
-            headers: {
-              Accept: "application/json",
-              "Accept-Encoding": "gzip",
-              "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY,
+      // Native InsForge web search — grounds the model with live web results
+      // and returns citations in `message.annotations`. Replaces the previous
+      // Brave/Tavily/DDG/Wikipedia provider chain.
+      try {
+        const response = (await aiClient.chat.completions.create({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: `Search the web and return up to ${cap} relevant results for: ${body.query}`,
             },
-            signal: AbortSignal.timeout(8000),
-          }
-        );
-        if (braveRes.ok) {
-          const data = await braveRes.json();
-          const results = normalizeSearchResults(data.web?.results ?? [], cap);
-          return Response.json({ results });
+          ],
+          webSearch: { enabled: true, maxResults: cap },
+        })) as {
+          choices?: Array<{
+            message?: {
+              annotations?: Array<{
+                type?: string;
+                // InsForge returns camelCase `urlCitation` (not snake_case).
+                urlCitation?: { url?: string; title?: string; content?: string };
+                url_citation?: { url?: string; title?: string; content?: string };
+              }>;
+            };
+          }>;
+        };
+
+        const annotations = response.choices?.[0]?.message?.annotations ?? [];
+        const raw: Array<{ title: string; url: string; snippet: string }> = [];
+        for (const a of annotations) {
+          const c = a.urlCitation ?? a.url_citation;
+          if (!c?.url) continue;
+          raw.push({
+            title: c.title ?? c.url,
+            url: c.url,
+            snippet: c.content ?? "",
+          });
+          if (raw.length >= cap) break;
         }
-      }
 
-      // Fallback: DuckDuckGo HTML scraping (free, no API key)
-      const params = new URLSearchParams({ q: query });
-      const ddgRes = await fetch(`https://html.duckduckgo.com/html/?${params}`, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; SuryaAI/1.0)",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!ddgRes.ok) {
+        return Response.json({ results: normalizeSearchResults(raw, cap) });
+      } catch (err) {
+        console.error("[search] InsForge web search failed:", err);
         return Response.json({ results: [] });
       }
-
-      const html = await ddgRes.text();
-      const $d = cheerio.load(html);
-      const rawDDG: Array<{ title: string; url: string; snippet: string }> = [];
-
-      $d(".result").each((_i, el) => {
-        if (rawDDG.length >= cap) return false;
-        const title = $d(el).find(".result__title").text().trim();
-        const snippet = $d(el).find(".result__snippet").text().trim();
-        const href = $d(el).find(".result__title a").attr("href") ?? "";
-        const urlText = $d(el).find(".result__url").text().trim();
-
-        // DDG wraps destination URLs — extract the real URL
-        let resultUrl = "";
-        if (href.includes("uddg=")) {
-          try {
-            resultUrl = decodeURIComponent(href.split("uddg=")[1].split("&")[0]);
-          } catch {
-            resultUrl = urlText ? `https://${urlText}` : "";
-          }
-        } else if (urlText) {
-          resultUrl = `https://${urlText}`;
-        }
-
-        if (title && resultUrl) rawDDG.push({ title, url: resultUrl, snippet });
-      });
-
-      const results = normalizeSearchResults(rawDDG, cap);
-      return Response.json({ results });
     }
 
     if (action === "scrape") {
-      if (!url) {
-        return Response.json({ error: "url is required" }, { status: 400 });
+      let res: Response;
+      try {
+        // safeFetch validates URL, blocks DNS-rebinding/redirect SSRF, re-checks every hop
+        res = await safeFetch(body.url, {
+          headers: { "User-Agent": "SuryaAI-Research/1.0" },
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "fetch failed";
+        return Response.json({ error: msg }, { status: 400 });
       }
-
-      if (!isSafeUrl(url)) {
-        return Response.json({ error: "Unsafe or invalid URL" }, { status: 400 });
-      }
-
-      const res = await fetch(url, {
-        headers: { "User-Agent": "SuryaAI-Research/1.0" },
-        signal: AbortSignal.timeout(8000),
-      });
 
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.includes("text")) {
-        return Response.json({ url, text: "" });
+        return Response.json({ url: body.url, text: "" });
       }
 
       const html = await res.text();
@@ -127,7 +117,7 @@ export async function POST(req: Request) {
         .trim()
         .slice(0, 6000);
 
-      return Response.json({ url, text });
+      return Response.json({ url: body.url, text });
     }
 
     return new Response(`Unknown action: ${action}`, { status: 400 });

@@ -1,0 +1,73 @@
+{
+  "family": "surya-ai",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/surya-ai-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/surya-ai-task-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "surya-ai",
+      "image": "ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/surya-ai:latest",
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        { "name": "NODE_ENV",                "value": "production" },
+        { "name": "PORT",                    "value": "3000" },
+        { "name": "NEXT_PUBLIC_APP_URL",     "value": "https://www.suryaai.in" },
+        { "name": "NEXT_PUBLIC_APP_NAME",    "value": "Surya AI" },
+        { "name": "NEXTAUTH_URL",            "value": "https://www.suryaai.in" },
+        { "name": "INSFORGE_BASE_URL",       "value": "https://rme548ii.ap-southeast.insforge.app" },
+        { "name": "WEB_SEARCH_API_URL",      "value": "https://rme548ii.ap-southeast.insforge.app" },
+        { "name": "IMAGE_GEN_API_URL",       "value": "https://rme548ii.ap-southeast.insforge.app" },
+        { "name": "DEFAULT_MODEL",           "value": "gemini-3.1-pro-preview-05-06" },
+        { "name": "MEDIUM_MODEL",            "value": "claude-sonnet-4-6" },
+        { "name": "LARGE_MODEL",             "value": "claude-opus-4-6" },
+        { "name": "WEB_SEARCH_MODEL",        "value": "gemini-3.1-pro-preview-05-06" },
+        { "name": "IMAGE_GEN_MODEL",         "value": "google/gemini-3-pro-image-preview" },
+        { "name": "VEO_MODEL",               "value": "veo-3.0-generate-001" },
+        { "name": "MEDIA_BUCKET",            "value": "media-assets" }
+      ],
+      "secrets": [
+        { "name": "NEXTAUTH_SECRET",          "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/NEXTAUTH_SECRET" },
+        { "name": "GOOGLE_CLIENT_ID",         "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/GOOGLE_CLIENT_ID" },
+        { "name": "GOOGLE_CLIENT_SECRET",     "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/GOOGLE_CLIENT_SECRET" },
+        { "name": "GITHUB_CLIENT_ID",         "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/GITHUB_CLIENT_ID" },
+        { "name": "GITHUB_CLIENT_SECRET",     "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/GITHUB_CLIENT_SECRET" },
+        { "name": "INSFORGE_API_KEY",         "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/INSFORGE_API_KEY" },
+        { "name": "INSFORGE_ANON_KEY",        "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/INSFORGE_ANON_KEY" },
+        { "name": "WEB_SEARCH_API_KEY",       "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/INSFORGE_API_KEY" },
+        { "name": "WEB_SEARCH_ANON_KEY",      "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/INSFORGE_ANON_KEY" },
+        { "name": "IMAGE_GEN_API_KEY",        "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/INSFORGE_API_KEY" },
+        { "name": "IMAGE_GEN_ANON_KEY",       "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/INSFORGE_ANON_KEY" },
+        { "name": "ELEVENLABS_API_KEY",       "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/ELEVENLABS_API_KEY" },
+        { "name": "SARVAM_API_KEY",           "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/SARVAM_API_KEY" },
+        { "name": "FAL_KEY",                  "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/FAL_KEY" },
+        { "name": "REPLICATE_API_TOKEN",      "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/REPLICATE_API_TOKEN" },
+        { "name": "GOOGLE_AI_API_KEY",        "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/GOOGLE_AI_API_KEY" },
+        { "name": "TOKEN_ENCRYPTION_KEY",     "valueFrom": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:surya-ai/TOKEN_ENCRYPTION_KEY" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/surya-ai",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

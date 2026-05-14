@@ -4,9 +4,12 @@
  */
 
 export const MODEL_MAP = {
-  sonnet: "anthropic/claude-sonnet-4.6", // default — fast, everyday tasks
-  opus:   "anthropic/claude-opus-4.6",   // heavy tasks + Extended Thinking
-  gemini: process.env.WEB_SEARCH_MODEL ?? "gemini-3.1-pro-preview-05-06", // web search synthesis + learning
+  sonnet: "anthropic/claude-sonnet-4.6", // default chat + simple App Builder apps
+  opus:   "anthropic/claude-opus-4.6",   // Extended Thinking + complex full-stack apps
+  gemini: process.env.WEB_SEARCH_MODEL ?? "anthropic/claude-sonnet-4.6", // legacy alias
+  // Kimi K2.5 via InsForge gateway — used for Web Search, Deep Research,
+  // and Google Slides/Sheets/Docs connector content generation.
+  kimi:   process.env.KIMI_MODEL ?? "moonshotai/kimi-k2.5",
 } as const;
 
 export type ModelKey = keyof typeof MODEL_MAP;
@@ -17,18 +20,26 @@ export const MAX_TOKENS: Record<ModelKey, number> = {
   sonnet: 8192,
   opus:   16000,
   gemini: 8192,
+  kimi:   16000,
 } as const;
 
 /**
- * Task-based model routing — always use this instead of hardcoding model strings.
- * Claude = all coding. Gemini = web search synthesis, learning content.
+ * Task-based model routing.
+ * - Chat: Sonnet (default) / Opus (thinking)
+ * - App Builder: Sonnet (simple apps — calculator, portfolio) / Opus (full-stack)
+ * - Web Search + Deep Research: Kimi K2.5 (InsForge gateway, long context, fast)
+ * - Slides/Sheets/Docs (Google Workspace export): Kimi K2.5
+ * - Media (image/video/audio): dedicated providers, not in this map.
  */
 export const TASK_MODEL_MAP = {
-  webSearch:    "gemini",
-  deepResearch: "opus",
-  flashcards:   "gemini",
-  studyGuide:   "gemini",
-  quiz:         "gemini",
+  webSearch:    "kimi",
+  deepResearch: "kimi",
+  slides:       "kimi",
+  sheets:       "kimi",
+  docs:         "kimi",
+  flashcards:   "kimi",
+  studyGuide:   "kimi",
+  quiz:         "kimi",
 } as const satisfies Partial<Record<string, ModelKey>>;
 
 export const THINKING_BUDGET = 10000;

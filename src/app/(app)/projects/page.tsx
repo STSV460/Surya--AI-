@@ -1,6 +1,5 @@
 "use client";
 
-export const runtime = "edge";
 
 import { useEffect, useState } from "react";
 import { Plus, Loader2, FolderOpen } from "lucide-react";
@@ -104,7 +103,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 min-h-0 overflow-y-auto p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">

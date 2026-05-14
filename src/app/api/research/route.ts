@@ -2,14 +2,23 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import * as cheerio from "cheerio";
 // randomUUID via globalThis.crypto (Web Crypto API)
-import { isSafeUrl } from "@/lib/web-utils";
+import { safeFetch } from "@/lib/web-utils";
 import { insforge, db } from "@/lib/insforge";
 import { MODEL_MAP, TASK_MODEL_MAP } from "@/lib/ai/models";
 import { aiLimiter } from "@/lib/rate-limit";
+import { getAppUrl } from "@/lib/app-url";
+import { requireOwnedConversation, requireOwnedProject } from "@/lib/auth-guard";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 import type { StreamEvent, SearchResult } from "@/types/chat";
 
-export const runtime = "edge";
 export const maxDuration = 300;
+
+const researchRequestSchema = z.object({
+  question: z.string().trim().min(1).max(20_000),
+  conversationId: z.string().trim().min(1).max(160).optional(),
+  projectId: z.string().trim().min(1).max(160).optional(),
+});
 
 function send(controller: ReadableStreamDefaultController, event: StreamEvent) {
   controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -30,8 +39,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { question, conversationId, projectId } = await req.json();
-  if (!question?.trim()) return new Response("question required", { status: 400 });
+  const body = await parseJson(req, researchRequestSchema);
+  if (isResponse(body)) return body;
+  const { question, conversationId, projectId } = body;
+
+  try {
+    if (conversationId) await requireOwnedConversation(conversationId, userId);
+    if (projectId) await requireOwnedProject(projectId, userId);
+  } catch (err) {
+    if (err instanceof Response) return err;
+    throw err;
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -44,7 +62,7 @@ export async function POST(req: NextRequest) {
 
         const aiClient = insforge.ai;
         const subQueryResponse = await aiClient.chat.completions.create({
-          model: MODEL_MAP.sonnet,
+          model: MODEL_MAP.kimi,
           messages: [
             {
               role: "system",
@@ -73,7 +91,7 @@ export async function POST(req: NextRequest) {
         });
 
         // ── Stage 2: Researcher agents (parallel Promise.all) ─────────────────
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+        const baseUrl = getAppUrl(req);
         const cookieHeader = req.headers.get("cookie") ?? "";
 
         interface AgentFindings {
@@ -108,9 +126,9 @@ export async function POST(req: NextRequest) {
 
           await Promise.all(
             urlsToScrape.map(async (url) => {
-              if (!isSafeUrl(url)) return;
               try {
-                const res = await fetch(url, {
+                // safeFetch validates URL + re-checks every redirect hop
+                const res = await safeFetch(url, {
                   headers: { "User-Agent": "SuryaAI-Research/1.0" },
                   signal: AbortSignal.timeout(8000),
                 });
@@ -174,7 +192,7 @@ export async function POST(req: NextRequest) {
           .map((r) => `[${r.index}] ${r.title} — ${r.url}`)
           .join("\n");
 
-        const artifactId = randomUUID();
+        const artifactId = crypto.randomUUID();
         const artifactTitle = `Research: ${question.slice(0, 60)}${question.length > 60 ? "..." : ""}`;
 
         send(controller, {
@@ -221,7 +239,7 @@ export async function POST(req: NextRequest) {
         if (!convId) {
           const conv = await db.conversations("insertOne", {
             document: {
-              id: randomUUID(),
+              id: crypto.randomUUID(),
               userId,
               title: `Research: ${question.slice(0, 50)}`,
               model: MODEL_MAP[TASK_MODEL_MAP.deepResearch],
@@ -230,10 +248,10 @@ export async function POST(req: NextRequest) {
               createdAt: new Date().toISOString(),
             },
           });
-          convId = conv?.document?.id ?? conv?.id ?? randomUUID();
+          convId = conv?.document?.id ?? conv?.id ?? crypto.randomUUID();
         }
 
-        const msgId = randomUUID();
+        const msgId = crypto.randomUUID();
         await db.messages("insertOne", {
           document: {
             id: msgId,

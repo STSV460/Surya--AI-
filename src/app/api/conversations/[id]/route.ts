@@ -1,7 +1,12 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
+import { parseJson, isResponse } from "@/lib/validation";
+import { z } from "zod";
 
-export const runtime = "edge";
+const renameSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+});
+
 
 async function requireOwned(id: string, userId: string) {
   const { document } = (await db.conversations("findOne", {
@@ -32,9 +37,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const check = await requireOwned(id, session.user.id);
   if (check.status !== 200) return new Response(null, { status: check.status });
 
-  const body = (await req.json()) as { title?: string };
+  const body = await parseJson(req, renameSchema);
+  if (isResponse(body)) return body;
   const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-  if (typeof body.title === "string") update.title = body.title.slice(0, 200);
+  if (typeof body.title === "string") update.title = body.title;
 
   await db.conversations("updateOne", {
     filter: { id, userId: session.user.id },
@@ -53,11 +59,17 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   if (check.status !== 200) return new Response(null, { status: check.status });
 
   await db.conversations("deleteOne", { filter: { id, userId: session.user.id } });
-  // Best-effort: purge messages for this conversation
+  // Cascade-delete linked rows so user data is fully purged (GDPR / right-to-erasure).
+  // Note: db.deleteOne wraps PostgREST .delete() which removes ALL matching rows.
   try {
     await db.messages("deleteOne", { filter: { conversationId: id } });
   } catch {
-    /* ignore */
+    /* messages cleanup best-effort */
+  }
+  try {
+    await db.artifacts("deleteOne", { filter: { conversationId: id } });
+  } catch {
+    /* artifacts cleanup best-effort */
   }
 
   return Response.json({ success: true });

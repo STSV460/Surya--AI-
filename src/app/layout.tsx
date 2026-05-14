@@ -15,10 +15,13 @@ const dmMono = DM_Mono({
   weight: ["300", "400", "500"],
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.suryaai.in";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Surya AI — The Smartest Free AI Chatbot for Students & Devs",
   description:
-    "Surya AI is a production-grade multi-agent AI assistant. Chat, research, build apps, and automate tasks with Claude 3.5 Sonnet & Opus. Free AI for students and developers.",
+    "Surya AI is a production-grade multi-agent AI assistant. Chat, research, build apps, and automate tasks with Claude Sonnet 4.6 & Opus. Free AI for students and developers.",
   keywords: [
     "free AI chatbot",
     "AI assistant for students",
@@ -26,24 +29,22 @@ export const metadata: Metadata = {
     "best AI for research",
     "Surya AI India",
     "multi-agent AI platform",
-    "free Claude 3.5 chat",
+    "free Claude Sonnet 4.6 chat",
   ],
   authors: [{ name: "Surya AI Team" }],
   creator: "Surya AI",
   openGraph: {
     type: "website",
     locale: "en_IN",
-    url: "https://surya-ai.com",
+    url: SITE_URL,
     title: "Surya AI — The AI that thinks with you",
     description: "Production-grade AI assistant. Chat, research, build apps, and automate your work.",
     siteName: "Surya AI",
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Surya AI Dashboard" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Surya AI — The Smartest Free AI Chatbot",
     description: "Multi-agent AI platform for students and developers.",
-    images: ["/og-image.png"],
   },
   robots: {
     index: true,

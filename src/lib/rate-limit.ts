@@ -29,6 +29,7 @@ interface RateLimitConfig {
 interface RateLimitResult {
   success: boolean;
   remaining: number;
+  resetAt: string;
 }
 
 /**
@@ -60,7 +61,7 @@ export function rateLimit(config: RateLimitConfig) {
         }
 
         // 1. Count requests in the current window
-        const { data: countData, error: countErr } = await db
+        const { count, error: countErr } = await db
           .from("rate_limits")
           .select("id", { count: "exact", head: true })
           .eq("identifier", identifier)
@@ -69,10 +70,10 @@ export function rateLimit(config: RateLimitConfig) {
 
         if (countErr) throw countErr;
 
-        const count = countData?.length ?? 0;
+        const currentCount = count ?? 0;
 
-        if (count >= config.maxRequests) {
-          return { success: false, remaining: 0 };
+        if (currentCount >= config.maxRequests) {
+          return { success: false, remaining: 0, resetAt: new Date(now.getTime() + config.windowMs).toISOString() };
         }
 
         // 2. Record the current request
@@ -84,16 +85,24 @@ export function rateLimit(config: RateLimitConfig) {
         });
 
         if (insertErr) {
-          // If insert fails (e.g. DB down), we fail-open to not block users
           console.error("[rate-limit] Failed to record hit:", insertErr);
-          return { success: true, remaining: config.maxRequests - count - 1 };
+          // Cost-bearing AI calls fail CLOSED on DB error — an attacker who
+          // can induce DB errors must not get free unmetered AI calls.
+          // Cheap connector calls fail OPEN to keep availability high.
+          if (config.type === "ai") {
+            return { success: false, remaining: 0, resetAt: new Date(now.getTime() + config.windowMs).toISOString() };
+          }
+          return { success: true, remaining: config.maxRequests - currentCount - 1, resetAt: new Date(now.getTime() + config.windowMs).toISOString() };
         }
 
-        return { success: true, remaining: config.maxRequests - count - 1 };
+        return { success: true, remaining: config.maxRequests - currentCount - 1, resetAt: new Date(now.getTime() + config.windowMs).toISOString() };
       } catch (err) {
-        // Fail open in case of DB errors to ensure availability
         console.error("[rate-limit] Critical error:", err);
-        return { success: true, remaining: 1 };
+        // Same fail-closed-for-AI policy as above.
+        if (config.type === "ai") {
+          return { success: false, remaining: 0, resetAt: new Date(Date.now() + config.windowMs).toISOString() };
+        }
+        return { success: true, remaining: 1, resetAt: new Date(Date.now() + config.windowMs).toISOString() };
       }
     },
 

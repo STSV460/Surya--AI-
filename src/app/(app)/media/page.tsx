@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { MediaStudio } from "@/components/media/MediaStudio";
 

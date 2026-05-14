@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import Image from "next/image";
 import { PanelLeft, ChevronDown, Sun } from "lucide-react";
 import { useUIStore, type ModelId } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -9,7 +8,7 @@ import { usePathname } from "next/navigation";
 
 const MODELS: { id: ModelId; label: string; badge: string; color: string }[] = [
   { id: "sonnet", label: "Sonnet 4.6", badge: "Fast",  color: "#4FC3F7" },
-  { id: "opus",   label: "Opus 4.7",   badge: "Smart", color: "#A855F7" },
+  { id: "opus",   label: "Opus 4.6",   badge: "Smart", color: "#A855F7" },
 ];
 
 function ModelSelector() {

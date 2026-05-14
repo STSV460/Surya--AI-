@@ -1,6 +1,13 @@
-export const runtime = "edge";
 
 import { auth } from "@/auth";
+import { getAppUrl } from "@/lib/app-url";
+import { parseSearchParams, isResponse } from "@/lib/validation";
+import { z } from "zod";
+
+const searchParamsSchema = z.object({
+  q: z.string().trim().min(1).max(500),
+  limit: z.coerce.number().int().min(1).max(10).optional().default(5),
+});
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -8,27 +15,36 @@ export async function GET(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q");
-  const limitParam = searchParams.get("limit");
-  const limit = limitParam ? parseInt(limitParam, 10) : 5;
+  const params = parseSearchParams(req, searchParamsSchema);
+  if (isResponse(params)) return params;
 
-  if (!q) {
-    return Response.json({ error: "q is required" }, { status: 400 });
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getAppUrl(req);
   const cookie = req.headers.get("cookie") ?? "";
 
-  const res = await fetch(`${appUrl}/api/connectors/search`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ action: "search", query: q, limit }),
-  });
+  try {
+    const res = await fetch(`${appUrl}/api/connectors/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({ action: "search", query: params.q, limit: params.limit }),
+    });
 
-  const data = await res.json();
-  return Response.json(data, { status: res.status });
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "Upstream search failed");
+      return Response.json(
+        { error: errorText || `Upstream returned ${res.status}`, results: [], query: params.q, count: 0 },
+        { status: res.status }
+      );
+    }
+
+    const raw = await res.json().catch(() => null);
+    const results = Array.isArray(raw?.results) ? raw.results : [];
+    return Response.json({ results, query: params.q, count: results.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Search request failed";
+    console.error("[search] fetch error:", msg);
+    return Response.json({ error: msg, results: [], query: q, count: 0 }, { status: 500 });
+  }
 }

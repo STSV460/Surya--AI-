@@ -4,7 +4,7 @@ import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { ChevronDown, ChevronRight, Brain, Code2, FileText, Play, Sparkles, Copy, Check } from "lucide-react";
+import { ChevronDown, ChevronRight, Brain, Code2, FileText, Play, Sparkles, Copy, Check, RotateCcw } from "lucide-react";
 import { CitationCard } from "./CitationCard";
 import { StreamingText } from "./StreamingText";
 import type { Message, ArtifactType } from "@/types/chat";
@@ -59,6 +59,8 @@ interface MessageBubbleProps {
   message: Message;
   isStreaming?: boolean;
   streamingContent?: string;
+  onRegenerate?: () => void;
+  canRegenerate?: boolean;
 }
 
 /**
@@ -69,17 +71,25 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
   streamingContent = "",
+  onRegenerate,
+  canRegenerate = false,
 }: MessageBubbleProps) {
   const [thinkingOpen, setThinkingOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
   const displayContent = isStreaming ? streamingContent : message.content;
+  function copyMessage() {
+    navigator.clipboard.writeText(displayContent).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
 
   return (
-    <div className={cn("flex w-full mb-7 animate-fade-in", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("group flex w-full mb-7 animate-fade-in", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
         <div
-          className="shrink-0 mr-3 mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shadow-sm"
-          style={{ background: "linear-gradient(135deg, #1A73E8, #4FC3F7)" }}
+          className="shrink-0 mr-3 mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shadow-sm bg-surya-500"
         >
           <Sparkles size={14} className="text-white" />
         </div>
@@ -87,10 +97,9 @@ export const MessageBubble = memo(function MessageBubble({
       <div
         className={cn(
           isUser
-            ? "max-w-[80%] px-4 py-2.5 bg-surface-2 text-foreground"
+            ? "max-w-[84%] rounded-[18px] rounded-br-md px-4 py-2.5 bg-[#303342] text-foreground shadow-sm"
             : "max-w-3xl flex-1 text-foreground leading-relaxed"
         )}
-        style={isUser ? { borderRadius: "18px 18px 4px 18px" } : undefined}
       >
         {/* Thinking block */}
         {message.thinking && (
@@ -216,6 +225,34 @@ export const MessageBubble = memo(function MessageBubble({
                 <CitationCard key={result.index} result={result} compact />
               ))}
             </div>
+          </div>
+        )}
+
+        {!isStreaming && displayContent && (
+          <div
+            className={cn(
+              "mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+              isUser ? "justify-end" : "justify-start"
+            )}
+          >
+            <button
+              type="button"
+              onClick={copyMessage}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
+              title="Copy message"
+            >
+              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+            </button>
+            {!isUser && canRegenerate && onRegenerate && (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
+                title="Regenerate"
+              >
+                <RotateCcw size={13} />
+              </button>
+            )}
           </div>
         )}
       </div>

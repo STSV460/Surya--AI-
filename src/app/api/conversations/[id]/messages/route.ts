@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/insforge";
 
-export const runtime = "edge";
 
 export async function GET(
   _req: Request,
@@ -16,7 +15,9 @@ export async function GET(
   const userId = (session.user as { id: string }).id;
 
   // Verify ownership
-  const convResult = await db.conversations("findOne", { filter: { id, userId } }) as any;
+  const convResult = (await db.conversations("findOne", {
+    filter: { id, userId },
+  })) as { document: { id: string } | null };
   if (!convResult?.document) {
     return new Response("Not found", { status: 404 });
   }
