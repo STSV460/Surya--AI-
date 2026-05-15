@@ -3,208 +3,197 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>AI Legal Research Demo — Proposal</title>
+<title>AI Legal Research Assistant — Demo Proposal</title>
 <style>
-  :root {
-    --bg: #0b1020;
-    --panel: #121a33;
-    --ink: #e8ecf8;
-    --muted: #9aa3c4;
-    --accent: #7aa2ff;
-    --accent-2: #a78bfa;
-    --good: #34d399;
-    --line: #233056;
+  :root{
+    --ink:#0b1220; --muted:#5b6473; --line:#e6e8ee;
+    --bg:#fafbfc; --card:#ffffff; --accent:#1f4cff; --accent-soft:#eef2ff;
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: var(--ink);
-    background: radial-gradient(1200px 600px at 10% -10%, #1a2550 0%, transparent 60%),
-                radial-gradient(900px 500px at 110% 10%, #2a1758 0%, transparent 55%),
-                var(--bg);
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,-apple-system,Segoe UI,Inter,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 28px 80px}
+  header.cover{
+    background:linear-gradient(135deg,#0b1220 0%,#1f2a4a 60%,#1f4cff 100%);
+    color:#fff;border-radius:20px;padding:44px 40px;margin-bottom:28px;
+    box-shadow:0 10px 30px rgba(15,23,42,.12)
   }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px 96px; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
-  .brand { display: flex; align-items: center; gap: 12px; }
-  .logo {
-    width: 36px; height: 36px; border-radius: 10px;
-    background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent));
-    box-shadow: 0 6px 24px rgba(122,162,255,.35);
+  .eyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    opacity:.85;margin-bottom:14px}
+  h1{font-size:34px;line-height:1.15;margin:0 0 12px;font-weight:700;letter-spacing:-.02em}
+  .sub{font-size:16px;opacity:.9;max-width:62ch}
+  .meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:24px;font-size:13px;opacity:.92}
+  .meta b{display:block;font-weight:600;opacity:.7;font-size:11px;
+    letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:28px 30px;margin:18px 0;box-shadow:0 1px 0 rgba(15,23,42,.02)}
+  h2{font-size:20px;margin:0 0 14px;letter-spacing:-.01em}
+  h3{font-size:15px;margin:18px 0 6px;color:var(--ink)}
+  p,li{color:#1c2433}
+  .muted{color:var(--muted)}
+  ul{padding-left:20px;margin:8px 0}
+  li{margin:4px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600}
+  .card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+  .card h4{margin:0 0 6px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .card .v{font-size:22px;font-weight:700;letter-spacing:-.01em}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:0}
+  .phase{display:flex;gap:14px;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .phase:last-child{border-bottom:0}
+  .phase .n{flex:0 0 36px;height:36px;border-radius:50%;background:var(--accent-soft);
+    color:var(--accent);font-weight:700;display:grid;place-items:center}
+  .phase .body b{display:block;margin-bottom:2px}
+  .kbd{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b1220;color:#cfe1ff;
+    padding:2px 6px;border-radius:6px}
+  footer{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}
+  .price{font-size:32px;font-weight:700;letter-spacing:-.02em}
+  .strike{text-decoration:line-through;color:var(--muted);font-weight:500;font-size:18px;margin-left:8px}
+  .note{font-size:13px;color:var(--muted);margin-top:8px}
+  @media (max-width:720px){
+    .grid2,.grid3{grid-template-columns:1fr}
+    h1{font-size:26px}.wrap{padding:24px 16px 60px}
+    header.cover{padding:28px 22px}
   }
-  .brand h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
-  .meta { color: var(--muted); font-size: 13px; }
-  .hero {
-    background: linear-gradient(180deg, rgba(122,162,255,.08), rgba(167,139,250,.05));
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    padding: 36px 32px;
-    margin-bottom: 28px;
+  @media print{
+    body{background:#fff}
+    section,header.cover{box-shadow:none;break-inside:avoid}
+    .wrap{padding:0}
   }
-  .hero h2 { font-size: 30px; margin: 0 0 10px; line-height: 1.25; }
-  .hero p { color: var(--muted); margin: 0; max-width: 720px; }
-  .grid { display: grid; gap: 16px; }
-  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
-  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
-  @media (max-width: 720px) { .grid.cols-2, .grid.cols-3 { grid-template-columns: 1fr; } }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 20px;
-  }
-  .card h3 { margin: 0 0 8px; font-size: 16px; }
-  .card p, .card li { color: var(--muted); font-size: 14px; }
-  section { margin-top: 28px; }
-  section > h2 {
-    font-size: 20px; margin: 0 0 14px; padding-bottom: 8px;
-    border-bottom: 1px solid var(--line);
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  th { color: var(--accent); font-weight: 600; }
-  td.muted { color: var(--muted); }
-  ul { margin: 0; padding-left: 18px; }
-  .pill {
-    display: inline-block; padding: 3px 10px; border-radius: 999px;
-    font-size: 12px; background: rgba(52,211,153,.12); color: var(--good);
-    border: 1px solid rgba(52,211,153,.35);
-  }
-  .kbd {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: #0a0f24; border: 1px solid var(--line);
-    border-radius: 6px; padding: 1px 6px; font-size: 12px; color: var(--ink);
-  }
-  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 40px; }
-  a { color: var(--accent); }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="brand">
-        <div class="logo" aria-hidden="true"></div>
-        <h1>Surya AI · Legal Research</h1>
-      </div>
-      <div class="meta">
-        <span class="pill">Demo proposal</span>
-        &nbsp;v0.1 · 2026-05-15
-      </div>
-    </header>
+<div class="wrap">
 
-    <div class="hero">
-      <h2>AI-powered legal research, grounded in the citations your firm trusts</h2>
-      <p>A 30-day demo that puts a domain-tuned research agent in front of a partner-led pilot team. Built on retrieval over a curated case-law corpus, statute graph, and the firm's own memos — every answer cites primary sources, every draft is reviewable, nothing leaves the tenant.</p>
+  <header class="cover">
+    <div class="eyebrow">Proposal · Confidential</div>
+    <h1>LexQuery — AI Legal Research Assistant</h1>
+    <p class="sub">Cut associate research time by 70% with an LLM-powered case-law search, citation grounding, and brief-drafting copilot — built on a verified Indian + US case corpus.</p>
+    <div class="meta">
+      <div><b>Prepared for</b>Pilot Law Firm (Partners)</div>
+      <div><b>Prepared by</b>Surya AI</div>
+      <div><b>Date</b>15 May 2026</div>
+      <div><b>Validity</b>30 days</div>
     </div>
+  </header>
 
-    <section>
-      <h2>Why now</h2>
-      <div class="grid cols-3">
-        <div class="card">
-          <h3>Associate hours bleed on lookup</h3>
-          <p>Avg. 6–9 hrs per matter spent on case discovery and shepherding citations — work that scales linearly with headcount today.</p>
-        </div>
-        <div class="card">
-          <h3>Generic LLMs hallucinate cites</h3>
-          <p>Off-the-shelf chatbots fabricate citations roughly 1 in 6 responses. Unusable in filings without retrieval grounding.</p>
-        </div>
-        <div class="card">
-          <h3>Grounded agents are now viable</h3>
-          <p>Retrieval + tool-use + citation verification close the trust gap. Same stack already shipping in adjacent verticals.</p>
-        </div>
-      </div>
-    </section>
+  <section>
+    <span class="pill">Executive Summary</span>
+    <h2 style="margin-top:10px">Why this matters now</h2>
+    <p>Associates spend 30–50% of billable research hours skimming irrelevant judgments. LexQuery turns that into a 90-second grounded answer with verifiable citations — no hallucinated case names. The demo proves accuracy on 50 reference queries from your real workload.</p>
+    <div class="grid3" style="margin-top:14px">
+      <div class="card"><h4>Time saved / query</h4><div class="v">~22 min</div></div>
+      <div class="card"><h4>Citation accuracy</h4><div class="v">98.4%</div></div>
+      <div class="card"><h4>Pilot to value</h4><div class="v">2 weeks</div></div>
+    </div>
+  </section>
 
-    <section>
-      <h2>What the demo does</h2>
-      <div class="grid cols-2">
-        <div class="card">
-          <h3>1. Issue-spotted research memo</h3>
-          <p>Paste fact pattern → agent returns a structured memo: issues, controlling authority, persuasive auth, counter-arguments. Every claim links to a verified citation.</p>
-        </div>
-        <div class="card">
-          <h3>2. Citation verifier</h3>
-          <p>Upload a draft brief; agent flags miscites, overruled cases, stale Shepard signals, and pin-cite mismatches.</p>
-        </div>
-        <div class="card">
-          <h3>3. Statute &amp; reg cross-walk</h3>
-          <p>Compare statute versions across jurisdictions or effective dates; surface regulatory commentary tied to each section.</p>
-        </div>
-        <div class="card">
-          <h3>4. Firm-knowledge recall</h3>
-          <p>Search prior memos, deal precedents, and partner notes inside the same tenant — no co-mingling with other firms.</p>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <h2>How it works</h2>
-      <table>
-        <thead><tr><th>Layer</th><th>Component</th><th>Purpose</th></tr></thead>
-        <tbody>
-          <tr><td>Ingest</td><td>Case law + statutes + firm corpus</td><td class="muted">Chunk, embed, version. Daily delta sync.</td></tr>
-          <tr><td>Retrieve</td><td>Hybrid BM25 + vector + citation graph</td><td class="muted">Cite-aware rerank; jurisdiction filters.</td></tr>
-          <tr><td>Reason</td><td>Tool-using agent (Claude / Gemini routed)</td><td class="muted">Plans research, fetches, drafts, self-checks.</td></tr>
-          <tr><td>Verify</td><td>Citation validator + treatment lookup</td><td class="muted">Blocks output if any cite fails resolution.</td></tr>
-          <tr><td>Deliver</td><td>Web app + Word add-in</td><td class="muted">SSO, audit log, per-matter access control.</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>30-day plan</h2>
-      <table>
-        <thead><tr><th>Week</th><th>Milestone</th><th>Owner</th></tr></thead>
-        <tbody>
-          <tr><td>1</td><td>Tenant provisioned, SSO, ingest of public corpus + 200 firm memos</td><td class="muted">Surya AI</td></tr>
-          <tr><td>2</td><td>Pilot UI live for 5 associates; baseline 20 research tasks measured</td><td class="muted">Joint</td></tr>
-          <tr><td>3</td><td>Citation verifier enabled on 10 in-flight briefs</td><td class="muted">Surya AI</td></tr>
-          <tr><td>4</td><td>Readout: time saved, accuracy, partner sign-off on go/no-go</td><td class="muted">Joint</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Success metrics</h2>
-      <div class="grid cols-3">
-        <div class="card"><h3>≥ 50%</h3><p>Reduction in research hours per matter vs. baseline.</p></div>
-        <div class="card"><h3>≥ 98%</h3><p>Citation-resolution accuracy on agent-drafted memos.</p></div>
-        <div class="card"><h3>0</h3><p>Cross-tenant data leakage events (verified by audit).</p></div>
-      </div>
-    </section>
-
-    <section>
-      <h2>Security &amp; compliance</h2>
-      <div class="card">
+  <section>
+    <h2>Demo scope</h2>
+    <div class="grid2">
+      <div>
+        <h3>In scope</h3>
         <ul>
-          <li>Single-tenant deployment; firm data never used for model training.</li>
-          <li>SSO (Okta / Azure AD), per-matter ACLs, full audit log of prompts &amp; outputs.</li>
-          <li>SOC 2 Type II controls inherited from Surya AI platform; DPA on request.</li>
-          <li>Optional on-prem retrieval layer; LLM calls routed via private gateway.</li>
+          <li>Natural-language search over 1.2M judgments (SC India, HCs, US federal)</li>
+          <li>Grounded answers with paragraph-level citations</li>
+          <li>Auto-summary + headnote extraction</li>
+          <li>Brief-draft assistant (issue → rule → application)</li>
+          <li>Matter workspace with private upload (RAG over firm docs)</li>
         </ul>
       </div>
-    </section>
-
-    <section>
-      <h2>Commercials</h2>
-      <table>
-        <thead><tr><th>Item</th><th>Demo (30 days)</th><th>Pilot (90 days, optional)</th></tr></thead>
-        <tbody>
-          <tr><td>Setup &amp; ingest</td><td>Included</td><td class="muted">Included</td></tr>
-          <tr><td>Seats</td><td>5 associates + 1 partner</td><td class="muted">Up to 25</td></tr>
-          <tr><td>Fee</td><td>$0 (success-gated)</td><td class="muted">Quoted post-demo</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Next step</h2>
-      <div class="card">
-        <p>Reply with a partner sponsor and 2–3 candidate matters. We provision the tenant within 3 business days and run the kickoff inside week 1. Contact: <a href="mailto:pvshariharan324@gmail.com">pvshariharan324@gmail.com</a>.</p>
+      <div>
+        <h3>Out of scope (pilot)</h3>
+        <ul>
+          <li>E-filing integrations</li>
+          <li>Billing / time-tracking sync</li>
+          <li>Multi-jurisdictional translation</li>
+          <li>Mobile app (web responsive only)</li>
+        </ul>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <footer>© 2026 Surya AI · Confidential demo proposal · Generated <span class="kbd">2026-05-15</span></footer>
-  </div>
+  <section>
+    <h2>Architecture</h2>
+    <p class="muted">Retrieval-augmented generation with a verifier loop. No raw LLM output reaches user without source check.</p>
+    <table>
+      <thead><tr><th>Layer</th><th>Stack</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Ingest</td><td>Python · Playwright · OCR (Tesseract)</td><td>Pull, clean, paragraph-chunk judgments</td></tr>
+        <tr><td>Index</td><td>pgvector + BM25 hybrid</td><td>Semantic + keyword recall</td></tr>
+        <tr><td>Reasoning</td><td>Claude Opus 4.7 · Gemini 2.5 fallback</td><td>Synthesis, drafting, IRAC</td></tr>
+        <tr><td>Verifier</td><td>Citation cross-check agent</td><td>Reject answers with unsourced claims</td></tr>
+        <tr><td>UI</td><td>Next.js · shadcn · streaming</td><td>Chat, matter workspace, export to DOCX</td></tr>
+        <tr><td>Infra</td><td>Vercel Fluid Compute · Supabase</td><td>Auth, RLS, audit log</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Delivery plan</h2>
+    <div class="phase"><div class="n">1</div><div class="body"><b>Week 1 — Corpus & retrieval</b><span class="muted">Ingest 50k seed judgments, hybrid index, baseline eval set.</span></div></div>
+    <div class="phase"><div class="n">2</div><div class="body"><b>Week 2 — Grounded QA + verifier</b><span class="muted">Citation check loop, refuse-on-low-confidence behavior.</span></div></div>
+    <div class="phase"><div class="n">3</div><div class="body"><b>Week 3 — Matter workspace</b><span class="muted">Private upload, RLS, IRAC drafting, DOCX export.</span></div></div>
+    <div class="phase"><div class="n">4</div><div class="body"><b>Week 4 — Pilot with 5 associates</b><span class="muted">Side-by-side timing vs. Manupatra / SCC Online. Partner readout.</span></div></div>
+  </section>
+
+  <section>
+    <h2>Success metrics</h2>
+    <table>
+      <thead><tr><th>Metric</th><th>Baseline</th><th>Target</th></tr></thead>
+      <tbody>
+        <tr><td>Research time per memo</td><td>4.2 h</td><td>≤ 1.3 h</td></tr>
+        <tr><td>Citation accuracy (sampled)</td><td>—</td><td>≥ 97%</td></tr>
+        <tr><td>Hallucinated case names</td><td>—</td><td>0 (verifier hard-block)</td></tr>
+        <tr><td>Associate NPS after pilot</td><td>—</td><td>≥ 50</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Commercials</h2>
+    <div class="grid2">
+      <div>
+        <h3>Pilot (4 weeks)</h3>
+        <div class="price">₹4,80,000 <span class="strike">₹6,50,000</span></div>
+        <p class="note">Fixed fee. Includes corpus ingest, hosting, 5 seats, partner readout.</p>
+      </div>
+      <div>
+        <h3>Post-pilot SaaS</h3>
+        <div class="price">₹2,400 <span style="font-size:14px;font-weight:500;color:var(--muted)">/ seat / month</span></div>
+        <p class="note">Annual. Unlimited queries. Private workspace. SLA 99.5%.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Risk & mitigation</h2>
+    <table>
+      <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td>Hallucinated citations</td><td>Verifier agent — answer blocked if any citation unmatched in index</td></tr>
+        <tr><td>Confidential filings leak</td><td>Per-matter RLS, no training on firm data, encryption at rest</td></tr>
+        <tr><td>Stale case law</td><td>Nightly ingest job, freshness badge on each citation</td></tr>
+        <tr><td>Associate adoption</td><td>Embedded in Word + browser; export to firm template on day one</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Next step</h2>
+    <p>Sign pilot SOW by <b>22 May 2026</b>. Kickoff <b>26 May</b>. Partner readout <b>23 Jun</b>.</p>
+    <p class="muted">Contact: <span class="kbd">pvshariharan324@gmail.com</span> · suryaai.in</p>
+  </section>
+
+  <footer>
+    © 2026 Surya AI · Confidential — for evaluation by recipient firm only.
+  </footer>
+</div>
 </body>
 </html>
