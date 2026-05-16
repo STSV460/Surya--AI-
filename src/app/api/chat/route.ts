@@ -604,6 +604,10 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
                   const parsed = JSON.parse(result);
                   if (parsed.results?.length) {
                     send(controller, { type: "search_results", searchResults: parsed.results });
+                  } else if (parsed.error) {
+                    const notice = `Web search failed: ${parsed.error}`;
+                    fullContent += `${notice}\n\n`;
+                    send(controller, { type: "text", content: `${notice}\n\n` });
                   }
                 } catch { /* ignore parse errors */ }
                 // Keep using the same model for synthesis (Gemini streaming is incompatible)

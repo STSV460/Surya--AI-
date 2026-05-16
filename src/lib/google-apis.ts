@@ -1,11 +1,10 @@
 /**
- * Google API helpers — edge-compatible stub
+ * Google API helpers.
  *
- * The full implementation depends on the `googleapis` npm package, which
- * uses Node-only APIs (fs, process internals) and cannot run on Cloudflare
- * Pages' edge runtime. The Google connector endpoints (calendar/drive/docs/
- * gmail) are temporarily disabled until they're rewritten using direct
- * REST calls (fetch) to https://www.googleapis.com/*.
+ * Google Workspace connector routes use direct REST calls with fetch so they
+ * work in serverless/edge-compatible deployments without the Node-only
+ * `googleapis` SDK. This file only keeps the legacy getGoogleClient guard plus
+ * the GitHub token helper used by the GitHub connector.
  *
  * What's still here:
  *   - `getGitHubToken` — pure DB lookup + decrypt, no googleapis dependency
@@ -29,10 +28,9 @@ export function isConnectorError(err: unknown): err is ConnectorError {
 }
 
 /**
- * @deprecated Disabled in edge build. Returns a NOT_AVAILABLE error so
- * callers (the 4 Google connector routes) can return a 503.
+ * @deprecated Use direct Google REST APIs with getValidWorkspaceToken instead.
  */
-export async function getGoogleClient(_userId: string): Promise<never> {
+export async function getGoogleClient(): Promise<never> {
   throw {
     code: "NOT_AVAILABLE",
     message:
