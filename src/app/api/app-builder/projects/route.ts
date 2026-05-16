@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     // empty body OK
   }
 
-  const id = crypto.randomUUID();
+  const id = crypto.crypto.randomUUID();
   const now = new Date().toISOString();
   const doc = {
     id,

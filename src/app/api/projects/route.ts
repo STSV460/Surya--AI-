@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   const now = new Date().toISOString();
   const project = {
-    id: randomUUID(),
+    id: crypto.randomUUID(),
     userId,
     name: name.trim(),
     description: description?.trim() ?? "",

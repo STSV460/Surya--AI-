@@ -129,7 +129,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const mimeType = file.type || "text/plain";
   // Insert without mimeType — schema doesn't have that column on hosted InsForge
   const insertDoc = {
-    id: randomUUID(),
+    id: crypto.randomUUID(),
     projectId,
     userId,
     name: file.name,

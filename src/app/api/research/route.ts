@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
           .map((r) => `[${r.index}] ${r.title} — ${r.url}`)
           .join("\n");
 
-        const artifactId = randomUUID();
+        const artifactId = crypto.randomUUID();
         const artifactTitle = `Research: ${question.slice(0, 60)}${question.length > 60 ? "..." : ""}`;
 
         send(controller, {
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
         if (!convId) {
           const conv = await db.conversations("insertOne", {
             document: {
-              id: randomUUID(),
+              id: crypto.randomUUID(),
               userId,
               title: `Research: ${question.slice(0, 50)}`,
               model: MODEL_MAP[TASK_MODEL_MAP.deepResearch],
@@ -230,10 +230,10 @@ export async function POST(req: NextRequest) {
               createdAt: new Date().toISOString(),
             },
           });
-          convId = conv?.document?.id ?? conv?.id ?? randomUUID();
+          convId = conv?.document?.id ?? conv?.id ?? crypto.randomUUID();
         }
 
-        const msgId = randomUUID();
+        const msgId = crypto.randomUUID();
         await db.messages("insertOne", {
           document: {
             id: msgId,

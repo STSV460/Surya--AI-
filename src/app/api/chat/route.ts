@@ -46,7 +46,7 @@ function processChunk(
     if (openMatch) {
       state.inArtifact = true;
       state.current = {
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         type: openMatch[1] as ArtifactType["type"],
         language: openMatch[2],
         title: openMatch[3] ?? "Untitled",
@@ -125,7 +125,7 @@ export async function POST(req: Request) {
   if (!convId) {
     const newConv = await db.conversations("insertOne", {
       document: {
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         userId,
         title: message.slice(0, 60),
         model,
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
   }) as { documents: Message[] };
 
   // Persist user message
-  const userMsgId = randomUUID();
+  const userMsgId = crypto.randomUUID();
   await db.messages("insertOne", {
     document: {
       id: userMsgId,
@@ -191,7 +191,7 @@ export async function POST(req: Request) {
             const data = await res.json();
 
             if (data.imageUrl) {
-              const artifactId = randomUUID();
+              const artifactId = crypto.randomUUID();
               const artifact: ArtifactType = {
                 id: artifactId,
                 type: "image",
@@ -205,7 +205,7 @@ export async function POST(req: Request) {
               send(controller, { type: "text", content: `Here's your image.` });
 
               // Persist
-              const assistantMsgId = randomUUID();
+              const assistantMsgId = crypto.randomUUID();
               await db.messages("insertOne", {
                 document: {
                   id: assistantMsgId,
@@ -254,7 +254,7 @@ export async function POST(req: Request) {
             }
 
             if (videoUrl) {
-              const artifactId = randomUUID();
+              const artifactId = crypto.randomUUID();
               const artifact: ArtifactType = {
                 id: artifactId,
                 type: "video",
@@ -510,7 +510,7 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
         }
 
         // Persist assistant message
-        const assistantMsgId = randomUUID();
+        const assistantMsgId = crypto.randomUUID();
         await db.messages("insertOne", {
           document: {
             id: assistantMsgId,
