@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { Plus, Settings, MessageSquare, FolderOpen, Search, Code2, Film, MoreHorizontal, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Settings, MessageSquare, FolderOpen, Search, Code2, Film, MoreHorizontal, Pencil, Trash2, CalendarClock } from "lucide-react";
 import { formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import {
   DropdownMenu,
@@ -293,8 +293,8 @@ export function Sidebar() {
               : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
           )}
         >
-          <Users size={15} />
-          Crew Builder
+          <CalendarClock size={15} />
+          Scheduled Tasks
         </Link>
       </div>
 
