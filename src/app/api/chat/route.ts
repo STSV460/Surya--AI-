@@ -18,6 +18,7 @@ const chatRequestSchema = z.object({
   conversationId: z.string().trim().min(1).max(160).optional(),
   projectId: z.string().trim().min(1).max(160).optional(),
   message: z.string().trim().min(1).max(80_000),
+  editMessageId: z.string().trim().min(1).max(160).optional(),
   thinking: z.boolean().optional().default(false),
   enableConnectors: z.boolean().optional().default(false),
   enableWebSearch: z.boolean().optional().default(false),
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
 
   const body = await parseJson(req, chatRequestSchema);
   if (isResponse(body)) return body;
-  const { message, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = false, enableImageGen = false, enableVideoGen = false } = body;
+  const { message, editMessageId, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = false, enableImageGen = false, enableVideoGen = false } = body;
 
   const userEmail = session.user.email ?? "";
 
@@ -208,17 +209,46 @@ export async function POST(req: Request) {
     limit: 40,
   }) as { documents: Message[] };
 
-  // Persist user message
-  const userMsgId = crypto.randomUUID();
-  await db.messages("insertOne", {
-    document: {
-      id: userMsgId,
-      conversationId: convId,
-      role: "user",
-      content: message,
-      timestamp: new Date().toISOString(),
-    },
-  });
+  let effectiveHistory = history.documents ?? [];
+
+  if (editMessageId) {
+    const editedIndex = effectiveHistory.findIndex((m) => m.id === editMessageId);
+    const editedMessage = editedIndex >= 0 ? effectiveHistory[editedIndex] : null;
+    if (!editedMessage || editedMessage.role !== "user") {
+      return new Response("Editable user message not found", { status: 404 });
+    }
+
+    const messagesToDelete = effectiveHistory.slice(editedIndex + 1);
+    await Promise.all(
+      messagesToDelete.map(async (m) => {
+        await db.messages("deleteOne", { filter: { id: m.id } });
+        try {
+          await db.artifacts("deleteOne", { filter: { messageId: m.id } });
+        } catch {
+          /* artifacts are best-effort cleanup */
+        }
+      })
+    );
+
+    await db.messages("updateOne", {
+      filter: { id: editMessageId, conversationId: convId },
+      update: { $set: { content: message, timestamp: new Date().toISOString() } },
+    });
+
+    effectiveHistory = effectiveHistory.slice(0, editedIndex);
+  } else {
+    // Persist user message
+    const userMsgId = crypto.randomUUID();
+    await db.messages("insertOne", {
+      document: {
+        id: userMsgId,
+        conversationId: convId,
+        role: "user",
+        content: message,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
 
   // ---------------------------------------------------------------
   // Image/Video Generation short-circuit — skip Claude entirely
@@ -348,7 +378,7 @@ export async function POST(req: Request) {
   // Build messages array
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiMessages: any[] = [
-    ...(history.documents ?? []).map((m) => ({
+    ...effectiveHistory.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     })),

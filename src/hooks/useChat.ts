@@ -29,24 +29,30 @@ export function useChat(projectId?: string) {
     setEnableImageGen,
     setEnableVideoGen,
     resetStream,
+    replaceFromEditedMessage,
   } = useChatStore();
 
   const sendMessage = useCallback(
-    async (content: string, conversationId?: string) => {
+    async (content: string, conversationId?: string, options?: { editMessageId?: string }) => {
       if (isStreaming || !content.trim()) return;
 
       const convId = conversationId ?? activeConversationId ?? undefined;
+      const editMessageId = options?.editMessageId;
 
-      // Optimistically add user message
-      const userMsg: Message = {
-        id: randomUUID(),
-        conversationId: convId ?? "",
-        role: "user",
-        content,
-        artifacts: [],
-        createdAt: new Date().toISOString(),
-      };
-      addMessage(userMsg);
+      if (editMessageId) {
+        replaceFromEditedMessage(editMessageId, content);
+      } else {
+        // Optimistically add user message
+        const userMsg: Message = {
+          id: randomUUID(),
+          conversationId: convId ?? "",
+          role: "user",
+          content,
+          artifacts: [],
+          createdAt: new Date().toISOString(),
+        };
+        addMessage(userMsg);
+      }
       setIsStreaming(true);
       updateStreamingContent("");
 
@@ -58,6 +64,7 @@ export function useChat(projectId?: string) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: content,
+            editMessageId,
             thinking: thinkingEnabled,
             conversationId: convId,
             projectId: projectId ?? undefined,
@@ -184,15 +191,13 @@ export function useChat(projectId?: string) {
       enableImageGen,
       enableVideoGen,
       addMessage,
+      replaceFromEditedMessage,
       updateStreamingContent,
       setIsStreaming,
       setActiveConversation,
-      setEnableConnectors,
-      setEnableWebSearch,
-      setEnableImageGen,
-      setEnableVideoGen,
       resetStream,
       router,
+      projectId,
     ]
   );
 

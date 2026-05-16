@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "@/hooks/useChat";
 import { useResearch } from "@/hooks/useResearch";
@@ -19,7 +19,6 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps) {
   const router = useRouter();
-  const [draftMessage, setDraftMessage] = useState<{ id: number; content: string } | null>(null);
 
   const {
     messages,
@@ -113,7 +112,7 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           isStreaming={isStreaming}
           streamingContent={streamingContent}
           onSend={(content) => sendMessage(content, conversationId)}
-          onEditMessage={(content) => setDraftMessage({ id: Date.now(), content })}
+          onEditMessage={(messageId, content) => sendMessage(content, conversationId, { editMessageId: messageId })}
         />
 
         {/* Deep Research progress — animated stages */}
@@ -135,8 +134,6 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
             onSend={(content) => sendMessage(content, conversationId)}
             onStop={stopStreaming}
             isStreaming={isStreaming || isResearching}
-            draftMessage={draftMessage}
-            onDraftConsumed={() => setDraftMessage(null)}
             enableConnectors={enableConnectors}
             onToggleConnectors={() => setEnableConnectors(!enableConnectors)}
             enableWebSearch={enableWebSearch}

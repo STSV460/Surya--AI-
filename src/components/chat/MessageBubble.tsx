@@ -19,6 +19,7 @@ import {
   Volume2,
   VolumeX,
   Loader2,
+  X,
 } from "lucide-react";
 import { CitationCard } from "./CitationCard";
 import { StreamingText } from "./StreamingText";
@@ -96,6 +97,8 @@ export const MessageBubble = memo(function MessageBubble({
   const [speaking, setSpeaking] = useState(false);
   const [docStatus, setDocStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [docError, setDocError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
   const isUser = message.role === "user";
   const displayContent = isStreaming ? streamingContent : message.content;
 
@@ -148,6 +151,26 @@ export const MessageBubble = memo(function MessageBubble({
     }
   }
 
+  function startEditing() {
+    setEditValue(displayContent);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setEditValue("");
+  }
+
+  function submitEdit() {
+    const trimmed = editValue.trim();
+    if (!trimmed || trimmed === displayContent.trim()) {
+      cancelEditing();
+      return;
+    }
+    onEdit?.(trimmed);
+    setEditing(false);
+  }
+
   return (
     <div className={cn("group flex w-full mb-7 animate-fade-in", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
@@ -184,7 +207,46 @@ export const MessageBubble = memo(function MessageBubble({
         )}
 
         {/* Main content */}
-        {isUser ? (
+        {isUser && editing ? (
+          <div className="min-w-[min(680px,78vw)]">
+            <textarea
+              value={editValue}
+              onChange={(event) => setEditValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  submitEdit();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelEditing();
+                }
+              }}
+              autoFocus
+              rows={Math.min(8, Math.max(2, editValue.split("\n").length))}
+              className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-[15px] leading-relaxed text-foreground outline-none focus:border-surya-500/50 focus:ring-[3px] focus:ring-surya-500/12"
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-gray-300 hover:bg-white/10"
+              >
+                <X size={13} />
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitEdit}
+                disabled={!editValue.trim()}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check size={13} />
+                Send
+              </button>
+            </div>
+          </div>
+        ) : isUser ? (
           <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{displayContent}</p>
         ) : (
           <div className="prose prose-invert max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-transparent prose-pre:p-0">
@@ -291,7 +353,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {!isStreaming && displayContent && (
+        {!isStreaming && displayContent && !editing && (
           <div
             className={cn(
               "mt-2 inline-flex flex-wrap items-center gap-1 rounded-lg border border-white/8 bg-surface-2/80 px-1 py-0.5 opacity-90 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100",
@@ -310,7 +372,7 @@ export const MessageBubble = memo(function MessageBubble({
             {isUser && onEdit && (
               <button
                 type="button"
-                onClick={() => onEdit(displayContent)}
+                onClick={startEditing}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
                 aria-label="Edit message"
                 title="Edit message"

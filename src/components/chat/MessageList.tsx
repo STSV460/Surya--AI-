@@ -92,7 +92,7 @@ interface MessageListProps {
   isStreaming: boolean;
   streamingContent: string;
   onSend?: (text: string) => void;
-  onEditMessage?: (content: string) => void;
+  onEditMessage?: (messageId: string, content: string) => void;
 }
 
 export function MessageList({ messages, isStreaming, streamingContent, onSend, onEditMessage }: MessageListProps) {
@@ -134,7 +134,7 @@ export function MessageList({ messages, isStreaming, streamingContent, onSend, o
               message={msg}
               canRegenerate={isLastAssistant}
               onRegenerate={previousUser && onSend ? () => onSend(previousUser.content) : undefined}
-              onEdit={msg.role === "user" ? onEditMessage : undefined}
+              onEdit={msg.role === "user" ? (content) => onEditMessage?.(msg.id, content) : undefined}
             />
           );
         })}

@@ -59,6 +59,7 @@ export interface Conversation {
 export interface ChatRequest {
   conversationId?: string;
   message: string;
+  editMessageId?: string;
   /** Model is now auto-selected server-side — this field is ignored */
   model?: string;
   projectId?: string;

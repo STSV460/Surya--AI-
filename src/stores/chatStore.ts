@@ -22,6 +22,7 @@ interface ChatStore {
   setActiveConversation: (id: string | null) => void;
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
+  replaceFromEditedMessage: (messageId: string, content: string) => void;
   updateStreamingContent: (content: string) => void;
   setIsStreaming: (isStreaming: boolean) => void;
   setThinkingEnabled: (enabled: boolean) => void;
@@ -48,6 +49,14 @@ export const useChatStore = create<ChatStore>((set) => ({
   setActiveConversation: (id) => set({ activeConversationId: id }),
   setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
+  replaceFromEditedMessage: (messageId, content) =>
+    set((s) => {
+      const index = s.messages.findIndex((message) => message.id === messageId);
+      if (index === -1) return s;
+      const next = s.messages.slice(0, index + 1);
+      next[index] = { ...next[index], content };
+      return { messages: next };
+    }),
   updateStreamingContent: (content) => set({ streamingContent: content }),
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
