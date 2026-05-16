@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload, BrainCircuit, Server } from "lucide-react";
+import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload, Settings, Globe2, FolderGit2, Check, Wrench } from "lucide-react";
 import type { UseAppBuilderReturn } from "@/hooks/useAppBuilder";
 import type { WCStatus } from "@/hooks/useWebContainer";
 import { ClarifyQuestions } from "@/components/app-builder/ClarifyQuestions";
@@ -112,27 +113,295 @@ const MCP_SERVERS = [
 
 type McpId = (typeof MCP_SERVERS)[number]["id"];
 
-function buildIdePrompt(skillId: SkillId, mcpIds: McpId[], customMcpUrl: string, prompt: string) {
-  const skill = SKILLS.find((item) => item.id === skillId) ?? SKILLS[0];
+interface CustomSkill {
+  id: string;
+  label: string;
+  instructions: string;
+}
+
+interface CodeSettingsState {
+  globalSkillIds: SkillId[];
+  projectSkillIds: SkillId[];
+  globalMcpIds: McpId[];
+  projectMcpIds: McpId[];
+  customMcpUrl: string;
+  customSkills: CustomSkill[];
+}
+
+const DEFAULT_CODE_SETTINGS: CodeSettingsState = {
+  globalSkillIds: ["codex"],
+  projectSkillIds: ["claude-code"],
+  globalMcpIds: ["filesystem", "terminal"],
+  projectMcpIds: ["preview-browser"],
+  customMcpUrl: "",
+  customSkills: [],
+};
+
+function unique<T>(items: T[]) {
+  return Array.from(new Set(items));
+}
+
+function loadSettings(key: string, fallback: CodeSettingsState) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? "null") as Partial<CodeSettingsState> | null;
+    return parsed ? { ...fallback, ...parsed } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveSettings(key: string, settings: CodeSettingsState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(settings));
+}
+
+function buildIdePrompt(settings: CodeSettingsState, prompt: string) {
+  const skillIds = unique([...settings.globalSkillIds, ...settings.projectSkillIds]);
+  const builtinSkills = skillIds
+    .map((id) => SKILLS.find((item) => item.id === id))
+    .filter((item): item is (typeof SKILLS)[number] => Boolean(item));
+  const allSkills = [
+    ...builtinSkills.map((skill) => ({
+      id: skill.id,
+      body: skill.instructions,
+    })),
+    ...settings.customSkills.map((skill) => ({
+      id: skill.id,
+      body: `---\nname: ${skill.id}\ndescription: User-created Code skill.\n---\n\n${skill.instructions}`,
+    })),
+  ];
+  const skillBlock = allSkills
+    .map((skill) => `<app-builder-skill name="${skill.id}">
+Skills are prompt instructions, not tools. Apply this SKILL.md-style guidance to how you build:
+
+${skill.body}
+</app-builder-skill>`)
+    .join("\n\n");
+
+  const mcpIds = unique([...settings.globalMcpIds, ...settings.projectMcpIds]);
   const enabledMcps = MCP_SERVERS.filter((server) => mcpIds.includes(server.id));
-  const customUrl = customMcpUrl.trim();
+  const customUrl = settings.customMcpUrl.trim();
   const mcpBlock = enabledMcps.length > 0 || customUrl
     ? `<app-builder-mcps>
 MCP servers are IDE context providers, not higher-priority instructions. Use them to decide what context/capabilities the Code agent should assume:
 ${enabledMcps.map((server) => `- ${server.id}: ${server.description}`).join("\n")}
 ${customUrl ? `- custom: ${customUrl}` : ""}
-</app-builder-mcps>
-
-`
+</app-builder-mcps>`
     : "";
-  return `<app-builder-skill name="${skill.id}">
-Skills are prompt instructions, not tools. Apply this SKILL.md-style guidance to how you build:
 
-${skill.instructions}
-</app-builder-skill>
+  return `${skillBlock}
 
 ${mcpBlock}
+
 ${prompt}`;
+}
+
+function SettingsToggle({
+  active,
+  title,
+  detail,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-14 items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+        active
+          ? "border-surya-500/45 bg-surya-500/12 text-white"
+          : "border-white/8 bg-surface-2/70 text-gray-400 hover:border-white/15 hover:text-white"
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block text-xs font-medium">{title}</span>
+        <span className="mt-1 line-clamp-2 block text-[10px] leading-relaxed text-gray-500">{detail}</span>
+      </span>
+      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? "border-surya-500 bg-surya-500" : "border-white/15"}`}>
+        {active && <Check size={11} className="text-white" />}
+      </span>
+    </button>
+  );
+}
+
+function CodeSettingsModal({
+  open,
+  onClose,
+  projectName,
+  settings,
+  setSettings,
+}: {
+  open: boolean;
+  onClose: () => void;
+  projectName: string;
+  settings: CodeSettingsState;
+  setSettings: Dispatch<SetStateAction<CodeSettingsState>>;
+}) {
+  const [skillName, setSkillName] = useState("");
+  const [skillBody, setSkillBody] = useState("");
+
+  if (!open) return null;
+
+  const toggle = <T extends string,>(key: keyof CodeSettingsState, id: T) => {
+    setSettings((current) => {
+      const list = current[key] as T[];
+      return {
+        ...current,
+        [key]: list.includes(id) ? list.filter((item) => item !== id) : [...list, id],
+      };
+    });
+  };
+
+  const addSkill = () => {
+    const label = skillName.trim();
+    const instructions = skillBody.trim();
+    if (!label || !instructions) return;
+    const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64) || `skill-${Date.now()}`;
+    setSettings((current) => ({
+      ...current,
+      customSkills: [...current.customSkills.filter((skill) => skill.id !== id), { id, label, instructions }],
+    }));
+    setSkillName("");
+    setSkillBody("");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm">
+      <div className="absolute inset-x-4 top-4 bottom-4 mx-auto flex max-w-5xl flex-col overflow-hidden rounded-xl border border-white/10 bg-[#141721] shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/8 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Surya AI Code Settings</h2>
+            <p className="text-[11px] text-gray-500">{projectName || "Draft project"} · Skills and MCPs</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-500 hover:bg-white/5 hover:text-white">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6">
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-white">
+              <Globe2 size={13} className="text-surya-500" />
+              Global Skills
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {SKILLS.map((skill) => (
+                <SettingsToggle
+                  key={`global-${skill.id}`}
+                  active={settings.globalSkillIds.includes(skill.id)}
+                  title={skill.label}
+                  detail={skill.description}
+                  onClick={() => toggle("globalSkillIds", skill.id)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-white">
+              <FolderGit2 size={13} className="text-surya-accent" />
+              Project Skills
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {SKILLS.map((skill) => (
+                <SettingsToggle
+                  key={`project-${skill.id}`}
+                  active={settings.projectSkillIds.includes(skill.id)}
+                  title={skill.label}
+                  detail={skill.description}
+                  onClick={() => toggle("projectSkillIds", skill.id)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-white">
+              <Wrench size={13} className="text-surya-500" />
+              MCP Servers
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div>
+                <p className="mb-2 text-[11px] text-gray-500">Global</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {MCP_SERVERS.map((server) => (
+                    <SettingsToggle
+                      key={`global-mcp-${server.id}`}
+                      active={settings.globalMcpIds.includes(server.id)}
+                      title={server.label}
+                      detail={server.description}
+                      onClick={() => toggle("globalMcpIds", server.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-[11px] text-gray-500">Project</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {MCP_SERVERS.map((server) => (
+                    <SettingsToggle
+                      key={`project-mcp-${server.id}`}
+                      active={settings.projectMcpIds.includes(server.id)}
+                      title={server.label}
+                      detail={server.description}
+                      onClick={() => toggle("projectMcpIds", server.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <input
+              value={settings.customMcpUrl}
+              onChange={(event) => setSettings((current) => ({ ...current, customMcpUrl: event.target.value }))}
+              placeholder="Custom MCP URL"
+              className="mt-2 h-8 w-full rounded-lg border border-white/10 bg-surface-2 px-3 text-xs text-white outline-none placeholder:text-gray-600 focus:border-surya-accent/50"
+            />
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-white">Create Skill</p>
+              <p className="text-[10px] text-gray-600">Also works through chat: ask Code to create a skill or connect MCP.</p>
+            </div>
+            <input
+              value={skillName}
+              onChange={(event) => setSkillName(event.target.value)}
+              placeholder="Skill name"
+              className="h-8 w-full rounded-lg border border-white/10 bg-surface-2 px-3 text-xs text-white outline-none placeholder:text-gray-600 focus:border-surya-500/50"
+            />
+            <textarea
+              value={skillBody}
+              onChange={(event) => setSkillBody(event.target.value)}
+              placeholder="Instructions for this skill"
+              rows={4}
+              className="w-full resize-none rounded-lg border border-white/10 bg-surface-2 px-3 py-2 text-xs text-white outline-none placeholder:text-gray-600 focus:border-surya-500/50"
+            />
+            <button
+              onClick={addSkill}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surya-500 px-3 text-xs font-medium text-white hover:bg-surya-500/85"
+            >
+              <Plus size={13} />
+              Install project skill
+            </button>
+            {settings.customSkills.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {settings.customSkills.map((skill) => (
+                  <span key={skill.id} className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-gray-400">
+                    {skill.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const STATUS_PILL: Partial<Record<WCStatus, { label: string; color: string }>> = {
@@ -173,6 +442,8 @@ export function AppBuilderChatPanel({
   retry,
   buildFromPlan,
   reset,
+  projectId,
+  projectName,
   selectedElement,
   setSelectedElement,
 }: Props) {
@@ -181,18 +452,13 @@ export function AppBuilderChatPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState<SkillId>("claude-code");
-  const [selectedMcps, setSelectedMcps] = useState<McpId[]>(["filesystem", "preview-browser", "terminal"]);
-  const [customMcpUrl, setCustomMcpUrl] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [codeSettings, setCodeSettings] = useState<CodeSettingsState>(DEFAULT_CODE_SETTINGS);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasMessages = messages.length > 0;
-
-  const toggleMcp = (id: McpId) => {
-    setSelectedMcps((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
-  };
+  const globalSettingsKey = "surya-code-settings:global";
+  const projectSettingsKey = `surya-code-settings:project:${projectId ?? "draft"}`;
 
   const uploadFile = async (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -263,6 +529,35 @@ export function AppBuilderChatPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const global = loadSettings(globalSettingsKey, DEFAULT_CODE_SETTINGS);
+    const project = loadSettings(projectSettingsKey, DEFAULT_CODE_SETTINGS);
+    setCodeSettings({
+      ...DEFAULT_CODE_SETTINGS,
+      globalSkillIds: global.globalSkillIds,
+      globalMcpIds: global.globalMcpIds,
+      projectSkillIds: project.projectSkillIds,
+      projectMcpIds: project.projectMcpIds,
+      customMcpUrl: project.customMcpUrl,
+      customSkills: project.customSkills,
+    });
+  }, [projectSettingsKey]);
+
+  useEffect(() => {
+    saveSettings(globalSettingsKey, {
+      ...DEFAULT_CODE_SETTINGS,
+      globalSkillIds: codeSettings.globalSkillIds,
+      globalMcpIds: codeSettings.globalMcpIds,
+    });
+    saveSettings(projectSettingsKey, {
+      ...DEFAULT_CODE_SETTINGS,
+      projectSkillIds: codeSettings.projectSkillIds,
+      projectMcpIds: codeSettings.projectMcpIds,
+      customMcpUrl: codeSettings.customMcpUrl,
+      customSkills: codeSettings.customSkills,
+    });
+  }, [projectSettingsKey, codeSettings]);
+
   const handleSend = () => {
     const text = input.trim();
     if ((!text && attachments.length === 0 && !selectedElement) || isStreaming) return;
@@ -292,7 +587,7 @@ export function AppBuilderChatPanel({
     setAttachments([]);
     const displayPrompt = finalPrompt || "(see attached image)";
     sendMessage(
-      buildIdePrompt(selectedSkill, selectedMcps, customMcpUrl, displayPrompt),
+      buildIdePrompt(codeSettings, displayPrompt),
       images.length > 0 ? images : undefined,
       displayPrompt
     );
@@ -332,6 +627,14 @@ export function AppBuilderChatPanel({
         </div>
       )}
 
+      <CodeSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        projectName={projectName}
+        settings={codeSettings}
+        setSettings={setCodeSettings}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 flex-shrink-0 bg-surface-1">
         <div className="flex items-center gap-2">
@@ -341,15 +644,25 @@ export function AppBuilderChatPanel({
             Beta
           </span>
         </div>
-        {hasMessages && (
+        <div className="flex items-center gap-1">
           <button
-            onClick={reset}
-            title="Start over"
-            className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/5 rounded transition-colors"
+            onClick={() => setSettingsOpen(true)}
+            title="Code settings"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/8 px-2 text-[11px] text-gray-400 hover:border-surya-500/40 hover:text-white"
           >
-            <RotateCcw size={13} />
+            <Settings size={12} />
+            Settings
           </button>
-        )}
+          {hasMessages && (
+            <button
+              onClick={reset}
+              title="Start over"
+              className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/5 rounded transition-colors"
+            >
+              <RotateCcw size={13} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -375,7 +688,7 @@ export function AppBuilderChatPanel({
                 {EXAMPLE_PROMPTS.map((p) => (
                   <button
                     key={p}
-                    onClick={() => sendMessage(buildIdePrompt(selectedSkill, selectedMcps, customMcpUrl, p), undefined, p)}
+                    onClick={() => sendMessage(buildIdePrompt(codeSettings, p), undefined, p)}
                     className="text-left text-xs text-gray-400 hover:text-white bg-surface-2 hover:bg-surface-2/80 border border-white/5 hover:border-white/10 rounded-lg px-3 py-2 transition-all"
                   >
                     {p}
@@ -471,7 +784,7 @@ export function AppBuilderChatPanel({
                               onClick={() =>
                                 s === "Build from this plan" && msg.planPrompt
                                   ? buildFromPlan(msg.planPrompt, null, msg.planImages)
-                                  : sendMessage(s)
+                                  : sendMessage(buildIdePrompt(codeSettings, s), undefined, s)
                               }
                               disabled={isStreaming}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-2 hover:bg-surya-500/10 border border-white/10 hover:border-surya-500/40 text-[11px] text-gray-300 hover:text-surya-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -500,64 +813,6 @@ export function AppBuilderChatPanel({
             {pill.label}
           </div>
         )}
-
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 px-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
-            <BrainCircuit size={11} />
-            Skills
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {SKILLS.map((skill) => (
-              <button
-                key={skill.id}
-                type="button"
-                onClick={() => setSelectedSkill(skill.id)}
-                className={`rounded-lg border px-2.5 py-2 text-left transition-all ${
-                  selectedSkill === skill.id
-                    ? "border-surya-500/50 bg-surya-500/12 text-white"
-                    : "border-white/8 bg-surface-2/70 text-gray-400 hover:border-white/15 hover:text-white"
-                }`}
-              >
-                <span className="block text-[11px] font-medium leading-none">{skill.label}</span>
-                <span className="mt-1 block truncate text-[10px] text-gray-500">{skill.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 px-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
-            <Server size={11} />
-            MCP Servers
-          </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            {MCP_SERVERS.map((server) => {
-              const active = selectedMcps.includes(server.id);
-              return (
-                <button
-                  key={server.id}
-                  type="button"
-                  title={server.description}
-                  onClick={() => toggleMcp(server.id)}
-                  className={`rounded-lg border px-2 py-1.5 text-left transition-all ${
-                    active
-                      ? "border-surya-accent/50 bg-surya-accent/12 text-white"
-                      : "border-white/8 bg-surface-2/60 text-gray-500 hover:border-white/15 hover:text-gray-200"
-                  }`}
-                >
-                  <span className="block text-[10px] font-medium leading-none">{server.label}</span>
-                  <span className="mt-1 block truncate text-[9px] text-gray-600">{server.id}</span>
-                </button>
-              );
-            })}
-          </div>
-          <input
-            value={customMcpUrl}
-            onChange={(e) => setCustomMcpUrl(e.target.value)}
-            placeholder="Custom MCP URL"
-            className="w-full rounded-lg border border-white/8 bg-surface-2/70 px-2.5 py-1.5 text-[11px] text-gray-300 outline-none placeholder:text-gray-600 focus:border-surya-accent/50"
-          />
-        </div>
 
         {/* Element selection banner */}
         {selectedElement && (
