@@ -11,7 +11,7 @@ const searchBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("search"),
     query: z.string().trim().min(1).max(500),
-    limit: z.coerce.number().int().min(1).max(10).optional().default(5),
+    limit: z.coerce.number().int().min(1).max(10).optional().default(8),
   }),
   z.object({
     action: z.literal("scrape"),
@@ -33,7 +33,9 @@ async function searchWithInsForge(query: string, cap: number): Promise<SearchPro
     messages: [
       {
         role: "user",
-        content: `Search the web and return up to ${cap} relevant results for: ${query}`,
+        content: `Find the newest authoritative web sources for: ${query}
+
+Return up to ${cap} relevant results. For latest, current, today, or news queries, prioritize recent dated pages, official sources, and reputable reporting. Prefer sources that expose publication dates.`,
       },
     ],
     webSearch: { enabled: true, maxResults: cap },

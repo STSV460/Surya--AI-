@@ -438,9 +438,12 @@ ${userMemories.map((m, i) => `${i + 1}. ${m.content}`).join("\n")}
 - Today is **${today}**.
 - Your training data has a cutoff date in the past. The world has moved on since then.
 - You MUST call the \`web_search\` tool for ANY question about current events, latest releases, recent news, or anything dated after your training cutoff.
-- After receiving search results, **cite them directly with the actual URLs and publication dates**. Treat search results as authoritative — they reflect real, current reality.
-- **Never substitute training-data answers for fresher search results.** If search returns articles from this year, those articles are the truth — your training data is outdated.
-- Format citations as inline links \`[source title](url)\` with the publication date.
+- For prompts asking "latest", "today", "current", "recent", or "news", search for the newest authoritative sources first. Prefer official newsroom/blog/docs pages for company or product announcements, then reputable journalism.
+- Sort findings by publication date descending before answering. Do NOT call an older result "the latest" if newer dated results are present; put newer items first and label older major announcements as context.
+- **Never substitute training-data answers for fresher search results.** If search returns current sources, those sources are the truth and your training data is outdated.
+- Cite every factual claim from search with inline links \`[source title](url)\` and the exact publication date. If a result has no visible date, say "date not shown" instead of inventing one.
+- Do not state benchmark numbers, pricing, dates, funding totals, partner names, acquisition status, or availability unless those details appear in the searched sources. If you cannot verify a number, omit it or label it unverified.
+- Use absolute dates, not only "today" or "yesterday".
 - If you don't search and rely on training data for a "latest news" question, you will give the user wrong information.`
     : `
 

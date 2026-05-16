@@ -176,12 +176,12 @@ export const CONNECTOR_TOOLS = [
     function: {
       name: "web_search",
       description:
-        "Search the web for current information, recent events, or facts you may not know. Returns titles, snippets, and URLs with citation numbers. Always use when user asks about recent events or explicitly requests web search.",
+        "Search the web for current information, recent events, or facts you may not know. Returns titles, snippets, and URLs with citation numbers. Always use when user asks about recent events or explicitly requests web search. For latest/news/current queries, request 8-10 results and prioritize newest official or reputable sources.",
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "The search query" },
-          limit: { type: "number", description: "Number of results to return (1-10, default 5)" },
+          limit: { type: "number", description: "Number of results to return (1-10, default 8)" },
         },
         required: ["query"],
       },
