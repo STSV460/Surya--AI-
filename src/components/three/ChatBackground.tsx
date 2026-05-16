@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+
+function seededUnit(index: number) {
+  const x = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
 
 function ChatParticles() {
   const ref = useRef<THREE.Points>(null!);
@@ -11,7 +16,7 @@ function ChatParticles() {
   const positions = useMemo(() => {
     const arr = new Float32Array(300 * 3);
     for (let i = 0; i < 300 * 3; i++) {
-      arr[i] = (Math.random() - 0.5) * 16;
+      arr[i] = (seededUnit(i) - 0.5) * 16;
     }
     return arr;
   }, []);
@@ -45,14 +50,6 @@ function ChatParticles() {
 }
 
 export function ChatBackground() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
   return (
     <div className="absolute inset-0 pointer-events-none z-0">
       <Canvas

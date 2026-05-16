@@ -3,7 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useChatStore } from "@/stores/chatStore";
-import type { StreamEvent, Message, ArtifactType, SearchResult } from "@/types/chat";
+import type { StreamEvent, Message, ArtifactType, SearchResult, CrewProgressEvent } from "@/types/chat";
 const randomUUID = () => crypto.randomUUID();
 
 export function useChat(projectId?: string) {
@@ -19,6 +19,9 @@ export function useChat(projectId?: string) {
     enableWebSearch,
     enableImageGen,
     enableVideoGen,
+    enableCrew,
+    crewMode,
+    crewEvents,
     activeConversationId,
     addMessage,
     updateStreamingContent,
@@ -28,6 +31,10 @@ export function useChat(projectId?: string) {
     setEnableWebSearch,
     setEnableImageGen,
     setEnableVideoGen,
+    setEnableCrew,
+    setCrewMode,
+    resetCrewEvents,
+    addCrewEvent,
     resetStream,
     replaceFromEditedMessage,
   } = useChatStore();
@@ -55,24 +62,37 @@ export function useChat(projectId?: string) {
       }
       setIsStreaming(true);
       updateStreamingContent("");
+      resetCrewEvents();
 
       abortRef.current = new AbortController();
 
       try {
-        const res = await fetch("/api/chat", {
+        const endpoint = enableCrew ? "/api/crew" : "/api/chat";
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: content,
-            editMessageId,
-            thinking: thinkingEnabled,
-            conversationId: convId,
-            projectId: projectId ?? undefined,
-            enableConnectors,
-            enableWebSearch,
-            enableImageGen,
-            enableVideoGen,
-          }),
+          body: JSON.stringify(
+            enableCrew
+              ? {
+                  crewName: crewMode,
+                  inputs: {
+                    message: content,
+                    conversationId: convId,
+                    projectId: projectId ?? undefined,
+                  },
+                }
+              : {
+                  message: content,
+                  editMessageId,
+                  thinking: thinkingEnabled,
+                  conversationId: convId,
+                  projectId: projectId ?? undefined,
+                  enableConnectors,
+                  enableWebSearch,
+                  enableImageGen,
+                  enableVideoGen,
+                }
+          ),
           signal: abortRef.current.signal,
         });
 
@@ -87,6 +107,7 @@ export function useChat(projectId?: string) {
         let streamedThinking = "";
         const streamedArtifacts: ArtifactType[] = [];
         let pendingSearchResults: SearchResult[] = [];
+        const pendingCrewEvents: CrewProgressEvent[] = [];
         let newConvId: string | null = null;
 
         while (true) {
@@ -138,6 +159,26 @@ export function useChat(projectId?: string) {
                 break;
               case "research_progress":
                 break;
+              case "crew_start":
+              case "crew_agent_step":
+              case "crew_agent_complete":
+              case "crew_task_complete":
+              case "crew_complete": {
+                const crewEvent = event as CrewProgressEvent;
+                pendingCrewEvents.push(crewEvent);
+                addCrewEvent(crewEvent);
+                if (event.type === "crew_agent_step" && event.thought) {
+                  updateStreamingContent(event.thought);
+                }
+                if (event.type === "crew_task_complete" && event.output) {
+                  updateStreamingContent(event.output);
+                }
+                if (event.type === "crew_complete") {
+                  streamedText = event.finalOutput ?? event.content ?? streamedText;
+                  updateStreamingContent(streamedText);
+                }
+                break;
+              }
               case "done":
                 newConvId = event.content ?? null;
                 break;
@@ -156,6 +197,7 @@ export function useChat(projectId?: string) {
           artifacts: streamedArtifacts,
           thinking: streamedThinking || undefined,
           searchResults: pendingSearchResults.length > 0 ? pendingSearchResults : undefined,
+          crewSteps: pendingCrewEvents.length > 0 ? pendingCrewEvents : undefined,
           createdAt: new Date().toISOString(),
         };
         addMessage(assistantMsg);
@@ -190,11 +232,15 @@ export function useChat(projectId?: string) {
       enableWebSearch,
       enableImageGen,
       enableVideoGen,
+      enableCrew,
+      crewMode,
       addMessage,
       replaceFromEditedMessage,
       updateStreamingContent,
       setIsStreaming,
       setActiveConversation,
+      resetCrewEvents,
+      addCrewEvent,
       resetStream,
       router,
       projectId,
@@ -220,5 +266,10 @@ export function useChat(projectId?: string) {
     setEnableImageGen,
     enableVideoGen,
     setEnableVideoGen,
+    enableCrew,
+    setEnableCrew,
+    crewMode,
+    setCrewMode,
+    crewEvents,
   };
 }

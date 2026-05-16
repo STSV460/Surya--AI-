@@ -87,7 +87,7 @@ export default function LandingPage() {
             "AI Artifacts",
             "AI Projects",
             "Voice Mode",
-            "App Builder",
+            "Code",
           ].map((feat) => (
             <li
               key={feat}
@@ -108,7 +108,7 @@ export default function LandingPage() {
           </p>
           <h3>Free AI Tools for Coding</h3>
           <p>
-            Build apps instantly with our AI App Builder. Use the smartest AI for coding and debugging with 
+            Build apps instantly with Surya Code. Use the smartest AI for coding and debugging with
             Claude Sonnet 4.6 integration.
           </p>
         </section>
@@ -122,7 +122,7 @@ export default function LandingPage() {
           <nav aria-label="Footer navigation" className="flex gap-6">
             <Link href="/chat" aria-label="Open Chat" className="hover:text-surya-500 transition-colors">Chat</Link>
             <Link href="/projects" aria-label="View Projects" className="hover:text-surya-500 transition-colors">Projects</Link>
-            <Link href="/app-builder" aria-label="Open App Builder" className="hover:text-surya-500 transition-colors">App Builder</Link>
+            <Link href="/app-builder" aria-label="Open Code" className="hover:text-surya-500 transition-colors">Code</Link>
             <span aria-hidden="true" className="opacity-30">|</span>
             <Link href="/privacy" aria-label="Privacy Policy" className="hover:text-surya-500 transition-colors">Privacy</Link>
             <Link href="/terms" aria-label="Terms of Service" className="hover:text-surya-500 transition-colors">Terms</Link>
@@ -134,4 +134,3 @@ export default function LandingPage() {
     </main>
   );
 }
-

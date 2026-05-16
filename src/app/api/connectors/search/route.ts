@@ -26,6 +26,60 @@ interface SearchProviderResult {
   results: RawSearchResult[];
 }
 
+async function searchWithFirecrawl(query: string, cap: number): Promise<SearchProviderResult> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return { provider: "firecrawl", results: [] };
+
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      limit: cap,
+      sources: ["web"],
+      scrapeOptions: {
+        formats: ["markdown"],
+        onlyMainContent: true,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Firecrawl ${res.status}: ${await res.text()}`);
+
+  const data = (await res.json()) as {
+    success?: boolean;
+    data?:
+      | {
+          web?: Array<{
+            title?: string;
+            description?: string;
+            url?: string;
+            markdown?: string;
+          }>;
+        }
+      | Array<{
+          title?: string;
+          description?: string;
+          url?: string;
+          markdown?: string;
+        }>;
+  };
+  const items = Array.isArray(data.data) ? data.data : data.data?.web ?? [];
+  return {
+    provider: "firecrawl",
+    results: items
+      .filter((item) => item.url)
+      .map((item) => ({
+        title: item.title ?? item.url ?? "",
+        url: item.url ?? "",
+        snippet: item.description ?? item.markdown?.slice(0, 280) ?? "",
+      }))
+      .slice(0, cap),
+  };
+}
+
 async function searchWithInsForge(query: string, cap: number): Promise<SearchProviderResult> {
   const model = process.env.WEB_SEARCH_MODEL ?? "moonshotai/kimi-k2.5";
   const response = (await aiClient.chat.completions.create({
@@ -149,6 +203,7 @@ function extractDuckDuckGoUrl(href: string) {
 async function runSearch(query: string, cap: number) {
   const errors: string[] = [];
   const providers = [
+    () => searchWithFirecrawl(query, cap),
     () => searchWithInsForge(query, cap),
     () => searchWithBrave(query, cap),
     () => searchWithDuckDuckGo(query, cap),
@@ -206,6 +261,34 @@ export async function POST(req: Request) {
     }
 
     if (action === "scrape") {
+      const firecrawlKey = process.env.FIRECRAWL_API_KEY;
+      if (firecrawlKey) {
+        const firecrawl = await fetch("https://api.firecrawl.dev/v2/scrape", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${firecrawlKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: body.url,
+            formats: ["markdown"],
+            onlyMainContent: true,
+          }),
+        });
+        if (firecrawl.ok) {
+          const data = (await firecrawl.json()) as {
+            data?: { markdown?: string; metadata?: { title?: string; sourceURL?: string } };
+            markdown?: string;
+          };
+          return Response.json({
+            url: data.data?.metadata?.sourceURL ?? body.url,
+            title: data.data?.metadata?.title ?? "",
+            text: (data.data?.markdown ?? data.markdown ?? "").slice(0, 12000),
+            provider: "firecrawl",
+          });
+        }
+      }
+
       let res: Response;
       try {
         // safeFetch validates URL, blocks DNS-rebinding/redirect SSRF, re-checks every hop

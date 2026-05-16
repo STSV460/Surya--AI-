@@ -98,7 +98,7 @@ export async function generateHfSpacesVideo(
   console.log(`[hfSpaces] connecting to ${SPACE_ID}`);
   const client = await Client.connect(
     SPACE_ID,
-    HF_TOKEN ? { hf_token: HF_TOKEN } : undefined,
+    HF_TOKEN ? { token: HF_TOKEN } : undefined,
   );
 
   const dims =

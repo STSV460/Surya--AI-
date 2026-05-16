@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Conversation, Message } from "@/types/chat";
+import type { Conversation, CrewName, CrewProgressEvent, Message } from "@/types/chat";
 
 interface ChatStore {
   conversations: Conversation[];
@@ -17,6 +17,9 @@ interface ChatStore {
   enableImageGen: boolean;
   /** When true, chat attempts video generation (experimental) */
   enableVideoGen: boolean;
+  enableCrew: boolean;
+  crewMode: CrewName;
+  crewEvents: CrewProgressEvent[];
 
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversation: (id: string | null) => void;
@@ -30,6 +33,10 @@ interface ChatStore {
   setEnableWebSearch: (enabled: boolean) => void;
   setEnableImageGen: (enabled: boolean) => void;
   setEnableVideoGen: (enabled: boolean) => void;
+  setEnableCrew: (enabled: boolean) => void;
+  setCrewMode: (mode: CrewName) => void;
+  resetCrewEvents: () => void;
+  addCrewEvent: (event: CrewProgressEvent) => void;
   resetStream: () => void;
 }
 
@@ -39,11 +46,14 @@ export const useChatStore = create<ChatStore>((set) => ({
   messages: [],
   isStreaming: false,
   streamingContent: "",
-  thinkingEnabled: false,
+  thinkingEnabled: true,
   enableConnectors: false,
   enableWebSearch: false,
   enableImageGen: false,
   enableVideoGen: false,
+  enableCrew: false,
+  crewMode: "research",
+  crewEvents: [],
 
   setConversations: (conversations) => set({ conversations }),
   setActiveConversation: (id) => set({ activeConversationId: id }),
@@ -64,5 +74,9 @@ export const useChatStore = create<ChatStore>((set) => ({
   setEnableWebSearch: (enableWebSearch) => set({ enableWebSearch }),
   setEnableImageGen: (enableImageGen) => set({ enableImageGen }),
   setEnableVideoGen: (enableVideoGen) => set({ enableVideoGen }),
+  setEnableCrew: (enableCrew) => set({ enableCrew }),
+  setCrewMode: (crewMode) => set({ crewMode }),
+  resetCrewEvents: () => set({ crewEvents: [] }),
+  addCrewEvent: (event) => set((s) => ({ crewEvents: [...s.crewEvents, event] })),
   resetStream: () => set({ streamingContent: "", isStreaming: false }),
 }));

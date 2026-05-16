@@ -4,6 +4,9 @@ import { Header } from "@/components/layout/Header";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { UserHydrator } from "@/components/layout/UserHydrator";
 import type { User } from "@/types/user";
+import type { Session } from "next-auth";
+
+export const dynamic = "force-dynamic";
 
 export default async function AppLayout({
   children,
@@ -14,7 +17,7 @@ export default async function AppLayout({
   // OpenNext/Cloudflare bundling errors during module evaluation don't
   // bubble up as a generic 500. Falls through to /login on any failure
   // and logs the real stack to wrangler logs.
-  let session: Awaited<ReturnType<typeof import("@/auth").auth>> | null = null;
+  let session: Session | null = null;
   try {
     const { auth } = await import("@/auth");
     session = await auth();

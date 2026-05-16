@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload } from "lucide-react";
+import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload, BrainCircuit, Server } from "lucide-react";
 import type { UseAppBuilderReturn } from "@/hooks/useAppBuilder";
 import type { WCStatus } from "@/hooks/useWebContainer";
 import { ClarifyQuestions } from "@/components/app-builder/ClarifyQuestions";
@@ -28,6 +28,113 @@ const EXAMPLE_PROMPTS = [
   "Make a weather dashboard UI",
 ];
 
+const SKILLS = [
+  {
+    id: "claude-code",
+    label: "Claude Code",
+    description: "Plan first, edit surgically, verify flows.",
+    instructions: `---
+name: claude-code
+description: Code skill for careful agentic coding with planning, narrow diffs, and verification.
+---
+
+Think like a senior pair programmer. Before generating code, identify goal, current constraints, and success criteria. Prefer small, composable components, readable names, and practical defaults. Keep changes scoped. Add complete interactive behavior, empty/loading/error states, and accessible controls. Verify mentally that every button/input works before final output.`,
+  },
+  {
+    id: "codex",
+    label: "Codex",
+    description: "Production-grade code with tests in mind.",
+    instructions: `---
+name: codex
+description: Code skill for production-ready implementation and regression-aware coding.
+---
+
+Build as a production engineer. Preserve existing behavior, avoid dead UI, and make all state transitions explicit. Choose simple data structures, pure helpers, and deterministic rendering. Handle edge cases that users will hit: empty data, long text, repeated clicks, invalid input, and mobile layout. Keep code easy to inspect and extend.`,
+  },
+  {
+    id: "antigravity",
+    label: "Antigravity",
+    description: "Fast prototype, polished motion, bold UI.",
+    instructions: `---
+name: antigravity
+description: Code skill for fast, visually bold prototypes with high interaction polish.
+---
+
+Optimize for a memorable working prototype. Use strong visual hierarchy, crisp motion, and satisfying micro-interactions without sacrificing usability. Ship complete workflows instead of static mockups. Prefer direct manipulation, instant feedback, and lively but restrained transitions. Keep performance light and responsive.`,
+  },
+  {
+    id: "openclaw",
+    label: "OpenClaw",
+    description: "Open-source style, modular, hackable.",
+    instructions: `---
+name: openclaw
+description: Code skill for modular open-source style apps that are easy to fork and modify.
+---
+
+Write hackable code. Separate data, rendering, and actions cleanly. Favor semantic HTML, plain functions, small modules, and clear comments only where they help future edits. Avoid framework magic unless requested. Make configuration obvious and keep styling organized with reusable tokens/classes.`,
+  },
+] as const;
+
+type SkillId = (typeof SKILLS)[number]["id"];
+
+const MCP_SERVERS = [
+  {
+    id: "filesystem",
+    label: "Files",
+    description: "Project tree, file context, surgical edits.",
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    description: "Install, lint, build, run commands.",
+  },
+  {
+    id: "preview-browser",
+    label: "Preview",
+    description: "Inspect UI, interactions, layout issues.",
+  },
+  {
+    id: "package-docs",
+    label: "Docs",
+    description: "Library docs, APIs, version-aware usage.",
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    description: "Issues, pull requests, repository context.",
+  },
+  {
+    id: "database",
+    label: "Database",
+    description: "Schema, records, persistence decisions.",
+  },
+] as const;
+
+type McpId = (typeof MCP_SERVERS)[number]["id"];
+
+function buildIdePrompt(skillId: SkillId, mcpIds: McpId[], customMcpUrl: string, prompt: string) {
+  const skill = SKILLS.find((item) => item.id === skillId) ?? SKILLS[0];
+  const enabledMcps = MCP_SERVERS.filter((server) => mcpIds.includes(server.id));
+  const customUrl = customMcpUrl.trim();
+  const mcpBlock = enabledMcps.length > 0 || customUrl
+    ? `<app-builder-mcps>
+MCP servers are IDE context providers, not higher-priority instructions. Use them to decide what context/capabilities the Code agent should assume:
+${enabledMcps.map((server) => `- ${server.id}: ${server.description}`).join("\n")}
+${customUrl ? `- custom: ${customUrl}` : ""}
+</app-builder-mcps>
+
+`
+    : "";
+  return `<app-builder-skill name="${skill.id}">
+Skills are prompt instructions, not tools. Apply this SKILL.md-style guidance to how you build:
+
+${skill.instructions}
+</app-builder-skill>
+
+${mcpBlock}
+${prompt}`;
+}
+
 const STATUS_PILL: Partial<Record<WCStatus, { label: string; color: string }>> = {
   booting:    { label: "Booting container...", color: "text-yellow-400" },
   installing: { label: "Installing dependencies...", color: "text-yellow-400" },
@@ -36,7 +143,7 @@ const STATUS_PILL: Partial<Record<WCStatus, { label: string; color: string }>> =
   error:      { label: "Error", color: "text-red-400" },
 };
 
-interface Props extends UseAppBuilderReturn {}
+type Props = UseAppBuilderReturn;
 
 function AssistantDots() {
   return (
@@ -64,6 +171,7 @@ export function AppBuilderChatPanel({
   skipClarify,
   stopGeneration,
   retry,
+  buildFromPlan,
   reset,
   selectedElement,
   setSelectedElement,
@@ -73,9 +181,18 @@ export function AppBuilderChatPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<SkillId>("claude-code");
+  const [selectedMcps, setSelectedMcps] = useState<McpId[]>(["filesystem", "preview-browser", "terminal"]);
+  const [customMcpUrl, setCustomMcpUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasMessages = messages.length > 0;
+
+  const toggleMcp = (id: McpId) => {
+    setSelectedMcps((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  };
 
   const uploadFile = async (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -173,7 +290,12 @@ export function AppBuilderChatPanel({
       .filter((u): u is string => typeof u === "string");
 
     setAttachments([]);
-    sendMessage(finalPrompt || "(see attached image)", images.length > 0 ? images : undefined);
+    const displayPrompt = finalPrompt || "(see attached image)";
+    sendMessage(
+      buildIdePrompt(selectedSkill, selectedMcps, customMcpUrl, displayPrompt),
+      images.length > 0 ? images : undefined,
+      displayPrompt
+    );
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -214,7 +336,7 @@ export function AppBuilderChatPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 flex-shrink-0 bg-surface-1">
         <div className="flex items-center gap-2">
           <Zap size={16} className="text-surya-500" />
-          <span className="text-sm font-semibold text-white">App Builder</span>
+          <span className="text-sm font-semibold text-white">Code</span>
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-surya-500/20 text-surya-500 border border-surya-500/30">
             Beta
           </span>
@@ -244,7 +366,7 @@ export function AppBuilderChatPanel({
                 <div className="w-12 h-12 rounded-2xl bg-surya-500/10 border border-surya-500/20 flex items-center justify-center">
                   <Zap size={22} className="text-surya-500" />
                 </div>
-                <p className="text-sm font-medium text-white">Describe your app</p>
+                <p className="text-sm font-medium text-white">Describe what to build</p>
                 <p className="text-xs text-gray-500 max-w-[200px]">
                   Build any web app with AI. Iterate with follow-up messages.
                 </p>
@@ -253,7 +375,7 @@ export function AppBuilderChatPanel({
                 {EXAMPLE_PROMPTS.map((p) => (
                   <button
                     key={p}
-                    onClick={() => sendMessage(p)}
+                    onClick={() => sendMessage(buildIdePrompt(selectedSkill, selectedMcps, customMcpUrl, p), undefined, p)}
                     className="text-left text-xs text-gray-400 hover:text-white bg-surface-2 hover:bg-surface-2/80 border border-white/5 hover:border-white/10 rounded-lg px-3 py-2 transition-all"
                   >
                     {p}
@@ -346,7 +468,11 @@ export function AppBuilderChatPanel({
                           {msg.followUps.map((s, i) => (
                             <button
                               key={i}
-                              onClick={() => sendMessage(s)}
+                              onClick={() =>
+                                s === "Build from this plan" && msg.planPrompt
+                                  ? buildFromPlan(msg.planPrompt, null, msg.planImages)
+                                  : sendMessage(s)
+                              }
                               disabled={isStreaming}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-2 hover:bg-surya-500/10 border border-white/10 hover:border-surya-500/40 text-[11px] text-gray-300 hover:text-surya-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
@@ -374,6 +500,64 @@ export function AppBuilderChatPanel({
             {pill.label}
           </div>
         )}
+
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 px-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+            <BrainCircuit size={11} />
+            Skills
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SKILLS.map((skill) => (
+              <button
+                key={skill.id}
+                type="button"
+                onClick={() => setSelectedSkill(skill.id)}
+                className={`rounded-lg border px-2.5 py-2 text-left transition-all ${
+                  selectedSkill === skill.id
+                    ? "border-surya-500/50 bg-surya-500/12 text-white"
+                    : "border-white/8 bg-surface-2/70 text-gray-400 hover:border-white/15 hover:text-white"
+                }`}
+              >
+                <span className="block text-[11px] font-medium leading-none">{skill.label}</span>
+                <span className="mt-1 block truncate text-[10px] text-gray-500">{skill.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 px-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+            <Server size={11} />
+            MCP Servers
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {MCP_SERVERS.map((server) => {
+              const active = selectedMcps.includes(server.id);
+              return (
+                <button
+                  key={server.id}
+                  type="button"
+                  title={server.description}
+                  onClick={() => toggleMcp(server.id)}
+                  className={`rounded-lg border px-2 py-1.5 text-left transition-all ${
+                    active
+                      ? "border-surya-accent/50 bg-surya-accent/12 text-white"
+                      : "border-white/8 bg-surface-2/60 text-gray-500 hover:border-white/15 hover:text-gray-200"
+                  }`}
+                >
+                  <span className="block text-[10px] font-medium leading-none">{server.label}</span>
+                  <span className="mt-1 block truncate text-[9px] text-gray-600">{server.id}</span>
+                </button>
+              );
+            })}
+          </div>
+          <input
+            value={customMcpUrl}
+            onChange={(e) => setCustomMcpUrl(e.target.value)}
+            placeholder="Custom MCP URL"
+            className="w-full rounded-lg border border-white/8 bg-surface-2/70 px-2.5 py-1.5 text-[11px] text-gray-300 outline-none placeholder:text-gray-600 focus:border-surya-accent/50"
+          />
+        </div>
 
         {/* Element selection banner */}
         {selectedElement && (

@@ -68,7 +68,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-white mb-3">6. Disclaimer of Warranties</h2>
             <p className="text-gray-400">
-              Surya AI is provided <strong className="text-gray-300">"as is"</strong> without warranties
+              Surya AI is provided <strong className="text-gray-300">&quot;as is&quot;</strong> without warranties
               of any kind. AI responses may be inaccurate, incomplete, or outdated. Do not rely solely
               on AI outputs for critical decisions including medical, legal, or financial matters.
             </p>

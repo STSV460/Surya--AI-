@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp } from "lucide-react";
+import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { CrewName } from "@/types/chat";
 
 interface AttachedFile {
   name: string;
@@ -24,6 +25,10 @@ interface InputBarProps {
   onToggleImageGen?: () => void;
   enableVideoGen?: boolean;
   onToggleVideoGen?: () => void;
+  enableCrew?: boolean;
+  onToggleCrew?: () => void;
+  crewMode?: CrewName;
+  onCrewModeChange?: (mode: CrewName) => void;
   onDeepResearch?: (question: string) => void;
   draftMessage?: { id: number; content: string } | null;
   onDraftConsumed?: () => void;
@@ -38,6 +43,10 @@ export function InputBar({
   onToggleConnectors,
   enableWebSearch,
   onToggleWebSearch,
+  enableCrew,
+  onToggleCrew,
+  crewMode = "research",
+  onCrewModeChange,
   onDeepResearch,
   draftMessage,
   onDraftConsumed,
@@ -55,7 +64,7 @@ export function InputBar({
   const canSend = (!!value.trim() || attachments.length > 0) && !disabled;
 
   // Count active tools for badge
-  const activeToolCount = [enableConnectors, enableWebSearch].filter(Boolean).length;
+  const activeToolCount = [enableConnectors, enableWebSearch, enableCrew].filter(Boolean).length;
 
   // Close tools popup on outside click
   useEffect(() => {
@@ -184,7 +193,7 @@ export function InputBar({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Message Surya AI"
+        placeholder="Message Jarvis"
         rows={1}
         style={{ minHeight: "52px", maxHeight: "240px", resize: "none" }}
         className="w-full bg-transparent px-5 pt-4 pb-1 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none overflow-y-auto"
@@ -299,6 +308,60 @@ export function InputBar({
                       )} />
                     </div>
                   </button>
+                )}
+
+                {/* Crew mode */}
+                {onToggleCrew && (
+                  <div className="rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => { onToggleCrew(); }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
+                        enableCrew
+                          ? "text-surya-500 bg-surya-500/10"
+                          : "text-gray-400 hover:text-white hover:bg-white/6"
+                      )}
+                    >
+                      <Users size={14} className="shrink-0" />
+                      <div className="flex-1 text-left">
+                        <p className="text-[13px] font-medium leading-none mb-0.5">Crew Mode</p>
+                        <p className="text-[11px] text-gray-500 leading-none">Multi-agent workflows</p>
+                      </div>
+                      <div className={cn(
+                        "w-7 h-4 rounded-full transition-colors relative shrink-0",
+                        enableCrew ? "bg-surya-500" : "bg-white/15"
+                      )}>
+                        <div className={cn(
+                          "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                          enableCrew ? "left-3.5" : "left-0.5"
+                        )} />
+                      </div>
+                    </button>
+                    {enableCrew && onCrewModeChange && (
+                      <div className="mt-1 grid grid-cols-2 gap-1 px-2 pb-1">
+                        {(["research", "email", "content", "code", "planner", "custom"] as CrewName[]).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => onCrewModeChange(mode)}
+                            className={cn(
+                              "h-7 rounded-lg px-2 text-[11px] capitalize transition-colors",
+                              crewMode === mode
+                                ? "bg-white text-black"
+                                : "bg-white/[0.04] text-gray-400 hover:text-white hover:bg-white/8"
+                            )}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(onToggleCrew && (onToggleConnectors || onToggleWebSearch)) && (
+                  <div className="h-px bg-white/6 mx-2 my-1.5" />
                 )}
 
                 {/* Image/Video gen moved to /media — removed from chat */}

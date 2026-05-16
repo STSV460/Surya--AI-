@@ -4,16 +4,6 @@ import { insforgeDb as db } from "@/lib/insforge";
 import { parseJson, isResponse } from "@/lib/validation";
 import { z } from "zod";
 
-interface Preferences {
-  responseStyle?: string;
-  defaultModel?: string;
-  language?: string;
-  bio?: string;
-  website?: string;
-  role?: string;
-  name?: string;
-}
-
 const preferencesSchema = z.object({
   profile: z
     .object({

@@ -48,7 +48,7 @@ export function AppBuilderGallery({ hook, onStartNew, onOpen }: Props) {
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-surface-1 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Zap size={18} className="text-surya-500" />
-          <h1 className="text-base font-semibold text-white">App Builder</h1>
+          <h1 className="text-base font-semibold text-white">Code</h1>
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-surya-500/20 text-surya-500 border border-surya-500/30">
             Beta
           </span>

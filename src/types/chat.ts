@@ -40,6 +40,7 @@ export interface Message {
   thinking?: string;
   tokens?: number;
   searchResults?: SearchResult[];   // populated when web_search tool was used
+  crewSteps?: CrewProgressEvent[];
   /** DB stores this as `timestamp` — aliased here for compat */
   createdAt: string;
 }
@@ -68,7 +69,30 @@ export interface ChatRequest {
   enableWebSearch?: boolean;
   enableImageGen?: boolean;
   enableVideoGen?: boolean;
+  enableCrew?: boolean;
+  crewMode?: CrewName;
   attachments?: { name: string; content: string; type: string }[];
+}
+
+export type CrewName = "research" | "email" | "content" | "code" | "planner" | "custom";
+
+export interface CrewProgressEvent {
+  type:
+    | "crew_start"
+    | "crew_agent_step"
+    | "crew_agent_complete"
+    | "crew_task_complete"
+    | "crew_complete"
+    | "error";
+  crewName?: CrewName | string;
+  agents?: { role: string }[];
+  agent?: string;
+  thought?: string;
+  toolCall?: Record<string, unknown>;
+  taskId?: string;
+  output?: string;
+  finalOutput?: string;
+  error?: string;
 }
 
 export interface StreamEvent {
@@ -81,6 +105,11 @@ export interface StreamEvent {
     | "tool_result"
     | "search_results"      // carries SearchResult[] for inline citation cards
     | "research_progress"   // carries { stage, detail } for Deep Research UI
+    | "crew_start"
+    | "crew_agent_step"
+    | "crew_agent_complete"
+    | "crew_task_complete"
+    | "crew_complete"
     | "done"
     | "error";
   content?: string;
@@ -89,5 +118,13 @@ export interface StreamEvent {
   toolInput?: Record<string, unknown>;
   searchResults?: SearchResult[];
   researchProgress?: { stage: ResearchStage; detail?: string };
+  crewName?: CrewName | string;
+  agents?: { role: string }[];
+  agent?: string;
+  thought?: string;
+  toolCall?: Record<string, unknown>;
+  taskId?: string;
+  output?: string;
+  finalOutput?: string;
   error?: string;
 }

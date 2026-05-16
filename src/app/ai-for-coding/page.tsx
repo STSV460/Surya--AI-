@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Code2, Cpu, Zap, Layout } from "lucide-react";
 
@@ -20,7 +19,7 @@ export default function CodingSEO() {
         </h1>
         
         <p className="text-xl text-gray-400 max-w-2xl font-mono">
-          Surya AI isn't just a chatbot. It's a production-grade workbench that builds, debugs, and refactors 
+          Surya AI isn&apos;t just a chatbot. It&apos;s a production-grade workbench that builds, debugs, and refactors
           with you in real-time.
         </p>
 
@@ -87,8 +86,8 @@ export default function CodingSEO() {
         </p>
         <p>
           Our <strong>AI Artifacts</strong> feature allows you to see your code in action immediately, reducing the feedback loop 
-          from minutes to seconds. Whether you are refactoring a legacy codebase or starting a new project in India's 
-          thriving tech ecosystem, Surya AI is the production-ready companion you've been looking for.
+          from minutes to seconds. Whether you are refactoring a legacy codebase or starting a new project in India&apos;s
+          thriving tech ecosystem, Surya AI is the production-ready companion you&apos;ve been looking for.
         </p>
       </article>
     </div>

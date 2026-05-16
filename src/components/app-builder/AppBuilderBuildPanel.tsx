@@ -51,7 +51,7 @@ function getLanguage(path: string): string {
   return map[ext] ?? "plaintext";
 }
 
-interface Props extends UseAppBuilderReturn {}
+type Props = UseAppBuilderReturn;
 
 const VIEWPORT_WIDTH: Record<"mobile" | "tablet" | "desktop", string> = {
   mobile: "375px",

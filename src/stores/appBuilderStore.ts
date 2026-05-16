@@ -20,6 +20,8 @@ export interface AppBuilderMessage {
   plan?: string;
   thoughtSeconds?: number;
   followUps?: string[];
+  planPrompt?: string;
+  planImages?: string[];
 }
 
 export interface AppBuilderProjectMeta {

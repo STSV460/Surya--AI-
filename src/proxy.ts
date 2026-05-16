@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
 // Routes that require authentication
-const PROTECTED = ["/chat", "/projects", "/app-builder", "/media", "/settings"];
+const PROTECTED = ["/chat", "/projects", "/app-builder", "/crew-builder", "/media", "/settings"];
 
 const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -24,7 +24,7 @@ function securityHeaders(isApi: boolean) {
       img-src 'self' data: blob: https:;
       font-src 'self' data:;
       media-src 'self' blob: data: https:;
-      connect-src 'self' https://*.insforge.app https://api.github.com https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com;
+      connect-src 'self' https://*.insforge.app https://api.github.com https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com ${process.env.CREW_SERVICE_URL ?? ""};
       frame-src 'self' blob:;
       object-src 'none';
       base-uri 'self';
@@ -46,6 +46,14 @@ function applySecurityHeaders(response: NextResponse, isApi: boolean) {
     response.headers.set(key, value);
   }
   response.headers.delete("Access-Control-Allow-Origin");
+  return response;
+}
+
+function redirectNoStore(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
   return response;
 }
 
@@ -99,12 +107,12 @@ export default auth((req) => {
   if (isProtected && !isLoggedIn) {
     const loginUrl = new URL("/login", nextUrl.origin);
     loginUrl.searchParams.set("callbackUrl", path);
-    return applySecurityHeaders(NextResponse.redirect(loginUrl), false);
+    return applySecurityHeaders(redirectNoStore(loginUrl), false);
   }
 
   // Logged-in user hitting /login OR landing page → redirect to chat
   if ((path === "/login" || path === "/") && isLoggedIn) {
-    return applySecurityHeaders(NextResponse.redirect(new URL("/chat", nextUrl.origin)), false);
+    return applySecurityHeaders(redirectNoStore(new URL("/chat", nextUrl.origin)), false);
   }
 
   return applySecurityHeaders(NextResponse.next(), false);

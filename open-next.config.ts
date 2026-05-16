@@ -1,4 +1,8 @@
-import type { OpenNextConfig } from "@opennextjs/cloudflare";
+type OpenNextConfig = {
+  default: unknown;
+  edgeExternals?: string[];
+  middleware?: unknown;
+};
 
 const config: OpenNextConfig = {
   default: {

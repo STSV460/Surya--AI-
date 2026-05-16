@@ -21,6 +21,7 @@ export function CitationCard({ result, compact = false }: CitationCardProps) {
         compact ? "px-2.5 py-2 min-w-[160px] max-w-[220px]" : "px-3 py-2.5 w-full"
       )}
     >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={result.favicon}
         alt=""

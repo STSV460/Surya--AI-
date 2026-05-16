@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * InsForge SDK — The sole data layer for Surya AI.
  * Uses @insforge/sdk (Supabase/PostgREST-compatible BaaS).
@@ -49,8 +50,11 @@ export const insforge = createClient({
 // "Authorization: Bearer ik_..." instead of the anon JWT.
 // The InsForge backend grants admin/service-role access to ik_ keys,
 // which bypasses Row Level Security on database operations.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(insforge.getHttpClient() as any).setAuthToken(INSFORGE_API_KEY);
+type AuthHttpClient = {
+  setAuthToken: (token: string) => void;
+};
+
+(insforge.getHttpClient() as AuthHttpClient).setAuthToken(INSFORGE_API_KEY);
 
 // Raw PostgREST client — used by auth.ts for direct .from() queries (snake_case)
 export const insforgeDb = insforge.database;
@@ -112,7 +116,7 @@ async function dbQuery(
       const snakeFilter = snakeKeys(filter);
       for (const [key, value] of Object.entries(snakeFilter)) {
         if (value !== undefined && value !== null) {
-          query = query.eq(key, value as any);
+          query = query.eq(key, value);
         }
       }
       if (sort) {
@@ -134,7 +138,7 @@ async function dbQuery(
       const snakeFilter = snakeKeys(filter);
       for (const [key, value] of Object.entries(snakeFilter)) {
         if (value !== undefined && value !== null) {
-          query = query.eq(key, value as any);
+          query = query.eq(key, value);
         }
       }
       const { data, error } = await query.limit(1).maybeSingle();
@@ -169,7 +173,7 @@ async function dbQuery(
       let query = client.from(table).update(snakeUpdate);
       for (const [key, value] of Object.entries(snakeFilter)) {
         if (value !== undefined && value !== null) {
-          query = query.eq(key, value as any);
+          query = query.eq(key, value);
         }
       }
       const { data, error } = await query.select().maybeSingle();
@@ -190,7 +194,7 @@ async function dbQuery(
       let query = client.from(table).delete();
       for (const [key, value] of Object.entries(snakeFilter)) {
         if (value !== undefined && value !== null) {
-          query = query.eq(key, value as any);
+          query = query.eq(key, value);
         }
       }
       const { error } = await query;

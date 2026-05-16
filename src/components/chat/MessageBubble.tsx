@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { CitationCard } from "./CitationCard";
+import { CrewProgress } from "./CrewProgress";
 import { StreamingText } from "./StreamingText";
 import type { Message, ArtifactType } from "@/types/chat";
 import { useUIStore } from "@/stores/uiStore";
@@ -350,6 +351,12 @@ export const MessageBubble = memo(function MessageBubble({
                 <CitationCard key={result.index} result={result} compact />
               ))}
             </div>
+          </div>
+        )}
+
+        {!isUser && message.crewSteps && message.crewSteps.length > 0 && (
+          <div className="mt-3">
+            <CrewProgress events={message.crewSteps} isRunning={false} embedded />
           </div>
         )}
 

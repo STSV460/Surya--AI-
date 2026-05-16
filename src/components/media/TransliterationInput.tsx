@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 const TRANSLIT_LANGS = new Set([
@@ -74,10 +74,6 @@ export function TransliterationInput({
     },
     [language],
   );
-
-  useEffect(() => {
-    if (!langActive) setSuggestion(null);
-  }, [langActive]);
 
   function applySuggestion(pick: string) {
     const ta = taRef.current;

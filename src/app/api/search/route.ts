@@ -45,6 +45,6 @@ export async function GET(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Search request failed";
     console.error("[search] fetch error:", msg);
-    return Response.json({ error: msg, results: [], query: q, count: 0 }, { status: 500 });
+    return Response.json({ error: msg, results: [], query: params.q, count: 0 }, { status: 500 });
   }
 }

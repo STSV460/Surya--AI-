@@ -25,7 +25,7 @@ export const useUIStore = create<UIStore>((set) => ({
   activeArtifact: null,
   voiceModalOpen: false,
   searchEnabled: false,
-  selectedModel: "sonnet",
+  selectedModel: "opus",
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

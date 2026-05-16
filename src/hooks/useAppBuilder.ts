@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   useAppBuilderStore,
   type AppBuilderMessage,
-  type ClarifyQuestion,
 } from "@/stores/appBuilderStore";
 import { useWebContainer } from "@/hooks/useWebContainer";
 
@@ -97,8 +96,15 @@ function filesEmittedSuccess(newFiles: Record<string, string>): boolean {
   return Object.keys(newFiles).length > 0;
 }
 
+function visiblePrompt(prompt: string): string {
+  return prompt
+    .replace(/<app-builder-skill[\s\S]*?<\/app-builder-skill>\s*/g, "")
+    .replace(/<app-builder-mcps>[\s\S]*?<\/app-builder-mcps>\s*/g, "")
+    .trim();
+}
+
 function deriveProjectName(prompt: string): string {
-  const cleaned = prompt.trim().split("\n")[0].slice(0, 60);
+  const cleaned = visiblePrompt(prompt).trim().split("\n")[0].slice(0, 60);
   return cleaned || "Untitled App";
 }
 
@@ -160,9 +166,15 @@ export function useAppBuilder() {
   );
 
   const runGenerate = useCallback(
-    async (prompt: string, clarifyAnswers: Record<string, string> | null, images?: string[]) => {
+    async (
+      prompt: string,
+      clarifyAnswers: Record<string, string> | null,
+      images?: string[],
+      projectIdOverride?: string
+    ) => {
       const isFirstBuild = Object.keys(store.files).length === 0;
       const mode = isFirstBuild ? "generate" : "edit";
+      const requestProjectId = projectIdOverride ?? store.projectId ?? undefined;
 
       const assistantMsgId = crypto.randomUUID();
       const assistantMsg: AppBuilderMessage = {
@@ -178,10 +190,11 @@ export function useAppBuilder() {
 
       const body =
         mode === "generate"
-          ? { mode, prompt, clarifyAnswers: clarifyAnswers ?? undefined, images }
+          ? { mode, prompt, projectId: requestProjectId, clarifyAnswers: clarifyAnswers ?? undefined, images }
           : {
               mode,
               prompt,
+              projectId: requestProjectId,
               currentFiles: store.files,
               chatHistory: store.messages
                 .filter((m) => !m.isStreaming && m.kind !== "clarify")
@@ -316,9 +329,10 @@ export function useAppBuilder() {
           const fres = await fetch("/api/app-builder", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          body: JSON.stringify({
               mode: "followups",
               prompt,
+              projectId: store.projectId ?? undefined,
               currentFiles: mergedFiles,
             }),
           });
@@ -334,7 +348,7 @@ export function useAppBuilder() {
       }
 
       // Persist snapshot
-      const pid = store.projectId;
+      const pid = requestProjectId ?? store.projectId;
       if (pid) {
         const mergedFiles = { ...store.files, ...newFiles };
         const now = new Date().toISOString();
@@ -357,14 +371,66 @@ export function useAppBuilder() {
     [store, wc]
   );
 
-  const sendMessage = useCallback(
-    async (prompt: string, images?: string[]) => {
+  const planFirst = useCallback(
+    async (prompt: string, images?: string[], displayPrompt = prompt) => {
       if (store.isStreaming) return;
 
       const userMsg: AppBuilderMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content: prompt,
+        content: displayPrompt,
+        kind: "text",
+      };
+      const assistantMsgId = crypto.randomUUID();
+      store.addMessage(userMsg);
+      store.addMessage({
+        id: assistantMsgId,
+        role: "assistant",
+        content: "",
+        isStreaming: true,
+        kind: "text",
+      });
+      store.setLastUserPrompt(prompt);
+      store.setIsStreaming(true);
+      store.setBuildError(null);
+
+      const proj = await ensureProject(deriveProjectName(displayPrompt));
+      try {
+        const res = await fetch("/api/app-builder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "plan", prompt, projectId: proj?.id, images }),
+        });
+        const data = (await res.json()) as { plan?: string; error?: string };
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        store.patchMessage(assistantMsgId, {
+          content: data.plan ?? "Ready to build.",
+          isStreaming: false,
+          planPrompt: prompt,
+          planImages: images,
+          followUps: ["Build from this plan"],
+        });
+      } catch (err) {
+        store.patchMessage(assistantMsgId, {
+          content: `Error: ${err instanceof Error ? err.message : "Planning failed"}`,
+          isStreaming: false,
+          error: true,
+        });
+      } finally {
+        store.setIsStreaming(false);
+      }
+    },
+    [store, ensureProject]
+  );
+
+  const sendMessage = useCallback(
+    async (prompt: string, images?: string[], displayPrompt = prompt) => {
+      if (store.isStreaming) return;
+
+      const userMsg: AppBuilderMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: displayPrompt,
         kind: "text",
       };
       store.addMessage(userMsg);
@@ -372,45 +438,15 @@ export function useAppBuilder() {
 
       const isFirstBuild = Object.keys(store.files).length === 0;
 
-      // Ensure project row exists for new builds
-      const proj = await ensureProject(deriveProjectName(prompt));
-
-      // First build: ask clarify questions before generating
+      // First build: plan first, then wait for user to confirm build.
       if (isFirstBuild) {
-        store.setIsStreaming(true);
-        try {
-          const res = await fetch("/api/app-builder", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "clarify", prompt, projectId: proj?.id }),
-          });
-          const data = (await res.json()) as {
-            skip?: boolean;
-            questions?: ClarifyQuestion[];
-          };
-          store.setIsStreaming(false);
-
-          if (!data.skip && data.questions && data.questions.length > 0) {
-            store.addMessage({
-              id: crypto.randomUUID(),
-              role: "assistant",
-              content: "A few quick questions before I build:",
-              kind: "clarify",
-              questions: data.questions,
-              answers: {},
-              answered: false,
-            });
-            return;
-          }
-        } catch {
-          store.setIsStreaming(false);
-          // Fall through to direct generate
-        }
+        return planFirst(prompt, images, displayPrompt);
       }
 
-      await runGenerate(prompt, null, images);
+      const proj = await ensureProject(deriveProjectName(displayPrompt));
+      await runGenerate(prompt, null, images, proj?.id);
     },
-    [store, ensureProject, runGenerate]
+    [store, ensureProject, planFirst, runGenerate]
   );
 
   const submitClarifyAnswers = useCallback(
@@ -596,6 +632,7 @@ export function useAppBuilder() {
 
     // Reset (clears session, keeps current project row if any)
     reset: store.reset,
+    buildFromPlan: runGenerate,
   };
 }
 

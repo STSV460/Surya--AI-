@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
@@ -11,15 +11,20 @@ const PARTICLE_COLOR = "#1A73E8";
 const CONNECT_DISTANCE = 2.5;
 const MAX_LINES = 3000;
 
+function seededUnit(index: number) {
+  const x = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 function ParticleField() {
   const groupRef = useRef<THREE.Group>(null!);
 
   const positions = useMemo(() => {
     const arr = new Float32Array(PARTICLE_COUNT * 3);
     for (let i = 0; i < PARTICLE_COUNT * 3; i += 3) {
-      arr[i]     = (Math.random() - 0.5) * 24;  // x
-      arr[i + 1] = (Math.random() - 0.5) * 24;  // y
-      arr[i + 2] = (Math.random() - 0.5) * 10;  // z
+      arr[i]     = (seededUnit(i) - 0.5) * 24;  // x
+      arr[i + 1] = (seededUnit(i + 1) - 0.5) * 24;  // y
+      arr[i + 2] = (seededUnit(i + 2) - 0.5) * 10;  // z
     }
     return arr;
   }, []);
@@ -119,14 +124,6 @@ function ParticleField() {
 }
 
 export function BackgroundScene() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
   return (
     <div className="absolute inset-0 pointer-events-none z-0">
       <Canvas

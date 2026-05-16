@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: surya-crew
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: INSFORGE_API_KEY
+        sync: false
+      - key: INSFORGE_API_URL
+        sync: false
+      - key: SURYA_BASE_URL
+        value: https://www.suryaai.in
+      - key: NEXTAUTH_URL
+        value: https://www.suryaai.in
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        value: sk-dummy
+      - key: WEB_CONCURRENCY
+        value: "1"

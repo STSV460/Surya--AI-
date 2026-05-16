@@ -9,6 +9,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { InputBar } from "@/components/chat/InputBar";
 import { ArtifactPanel } from "@/components/artifacts/ArtifactPanel";
 import { ResearchProgress } from "@/components/chat/ResearchProgress";
+import { CrewProgress } from "@/components/chat/CrewProgress";
 import { useUIStore } from "@/stores/uiStore";
 import type { Message } from "@/types/chat";
 
@@ -34,6 +35,11 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     setEnableImageGen,
     enableVideoGen,
     setEnableVideoGen,
+    enableCrew,
+    setEnableCrew,
+    crewMode,
+    setCrewMode,
+    crewEvents,
   } = useChat(projectId);
 
   const {
@@ -122,6 +128,8 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           isRunning={isResearching}
         />
 
+        <CrewProgress events={crewEvents} isRunning={isStreaming} />
+
         {/* Research error */}
         {researchError && !isResearching && (
           <div className="mx-auto max-w-3xl px-4 mb-2">
@@ -142,6 +150,10 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
             onToggleImageGen={() => setEnableImageGen(!enableImageGen)}
             enableVideoGen={enableVideoGen}
             onToggleVideoGen={() => setEnableVideoGen(!enableVideoGen)}
+            enableCrew={enableCrew}
+            onToggleCrew={() => setEnableCrew(!enableCrew)}
+            crewMode={crewMode}
+            onCrewModeChange={setCrewMode}
             onDeepResearch={(question) => startResearch(question, conversationId, projectId)}
           />
         </div>

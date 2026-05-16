@@ -14,7 +14,7 @@ export const MODEL_MAP = {
 
 export type ModelKey = keyof typeof MODEL_MAP;
 
-export const DEFAULT_MODEL: ModelKey = "sonnet";
+export const DEFAULT_MODEL: ModelKey = "opus";
 
 export const MAX_TOKENS: Record<ModelKey, number> = {
   sonnet: 8192,

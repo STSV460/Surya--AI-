@@ -11,7 +11,7 @@ export function apiError(
   cause?: unknown,
   context?: string,
 ): Response {
-  const requestId = randomUUID();
+  const requestId = crypto.randomUUID();
   if (cause !== undefined) {
     const tag = context ? `[${context}]` : "[apiError]";
     console.error(tag, "requestId=", requestId, cause);
