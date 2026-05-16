@@ -104,7 +104,7 @@ export async function POST(req: Request) {
   }
 
   const body: ChatRequest = await req.json();
-  const { message, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = false, enableImageGen = false, enableVideoGen = false } = body;
+  const { message, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = false, enableImageGen = false, enableVideoGen = false, editMessageId } = body as ChatRequest & { editMessageId?: string };
 
   if (!message?.trim()) {
     return new Response("Message required", { status: 400 });
@@ -149,6 +149,20 @@ export async function POST(req: Request) {
     });
   }
 
+  // ChatGPT-style edit: drop the edited user message + everything after it
+  // BEFORE loading history, so the model sees a clean truncated context.
+  if (editMessageId && convId) {
+    const editTarget = await db.messages("findOne", {
+      filter: { id: editMessageId, conversationId: convId },
+    }) as { document: { timestamp?: string } | null };
+    const editTs = editTarget.document?.timestamp;
+    if (editTs) {
+      await db.messages("deleteMany", {
+        filter: { conversationId: convId, timestamp: { $gte: editTs } },
+      });
+    }
+  }
+
   // Load prior messages
   const history = await db.messages("find", {
     filter: { conversationId: convId },
@@ -156,8 +170,8 @@ export async function POST(req: Request) {
     limit: 40,
   }) as { documents: Message[] };
 
-  // Persist user message
-  const userMsgId = crypto.randomUUID();
+  // Persist user message (reuse id if editing so the client can keep its anchor)
+  const userMsgId = editMessageId ?? crypto.randomUUID();
   await db.messages("insertOne", {
     document: {
       id: userMsgId,

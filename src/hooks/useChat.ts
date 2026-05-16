@@ -21,6 +21,7 @@ export function useChat(projectId?: string) {
     enableVideoGen,
     activeConversationId,
     addMessage,
+    replaceMessageAndTruncate,
     updateStreamingContent,
     setIsStreaming,
     setActiveConversation,
@@ -32,21 +33,31 @@ export function useChat(projectId?: string) {
   } = useChatStore();
 
   const sendMessage = useCallback(
-    async (content: string, conversationId?: string) => {
+    async (
+      content: string,
+      conversationId?: string,
+      options?: { editMessageId?: string }
+    ) => {
       if (isStreaming || !content.trim()) return;
 
       const convId = conversationId ?? activeConversationId ?? undefined;
+      const editMessageId = options?.editMessageId;
 
-      // Optimistically add user message
-      const userMsg: Message = {
-        id: randomUUID(),
-        conversationId: convId ?? "",
-        role: "user",
-        content,
-        artifacts: [],
-        createdAt: new Date().toISOString(),
-      };
-      addMessage(userMsg);
+      if (editMessageId) {
+        // ChatGPT-style edit: rewrite the original message and drop everything after it
+        replaceMessageAndTruncate(editMessageId, content);
+      } else {
+        // Optimistically add new user message
+        const userMsg: Message = {
+          id: randomUUID(),
+          conversationId: convId ?? "",
+          role: "user",
+          content,
+          artifacts: [],
+          createdAt: new Date().toISOString(),
+        };
+        addMessage(userMsg);
+      }
       setIsStreaming(true);
       updateStreamingContent("");
 
@@ -65,6 +76,7 @@ export function useChat(projectId?: string) {
             enableWebSearch,
             enableImageGen,
             enableVideoGen,
+            editMessageId,
           }),
           signal: abortRef.current.signal,
         });
@@ -184,6 +196,7 @@ export function useChat(projectId?: string) {
       enableImageGen,
       enableVideoGen,
       addMessage,
+      replaceMessageAndTruncate,
       updateStreamingContent,
       setIsStreaming,
       setActiveConversation,

@@ -101,21 +101,59 @@ export const MessageBubble = memo(function MessageBubble({
     });
   }, [message.content]);
 
-  const handleSpeak = useCallback(() => {
-    if (!window.speechSynthesis) return;
-    if (isSpeaking) {
-      window.speechSynthesis.cancel();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleSpeak = useCallback(async () => {
+    // Toggle off if already playing
+    if (isSpeaking && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
       setIsSpeaking(false);
       return;
     }
-    window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(message.content.replace(/[#*`_~[\]()]/g, ""));
-    utt.rate = 1.0;
-    utt.pitch = 1.0;
-    utt.onend = () => setIsSpeaking(false);
-    utt.onerror = () => setIsSpeaking(false);
+
+    const cleaned = message.content.replace(/[#*`_~[\]()]/g, "").trim();
+    if (!cleaned) return;
+
     setIsSpeaking(true);
-    window.speechSynthesis.speak(utt);
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: cleaned }),
+      });
+
+      if (!res.ok) {
+        // Fall back to Web Speech API if Groq fails (e.g. GROQ_API_KEY missing)
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+          const utt = new SpeechSynthesisUtterance(cleaned);
+          utt.onend = () => setIsSpeaking(false);
+          utt.onerror = () => setIsSpeaking(false);
+          window.speechSynthesis.speak(utt);
+          return;
+        }
+        setIsSpeaking(false);
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+        setIsSpeaking(false);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+        setIsSpeaking(false);
+      };
+      await audio.play();
+    } catch {
+      setIsSpeaking(false);
+    }
   }, [isSpeaking, message.content]);
 
   const handleGoogleDocs = useCallback(async () => {
@@ -125,18 +163,22 @@ export const MessageBubble = memo(function MessageBubble({
       const res = await fetch("/api/connectors/docs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", title: "Surya AI Response", content: message.content }),
+        body: JSON.stringify({
+          action: "create",
+          title: "Surya AI Response",
+          content: message.content,
+        }),
       });
       if (res.status === 401 || res.status === 403) {
-        setDocsError("Connect Google first");
-        setTimeout(() => setDocsError(null), 3000);
+        setDocsError("Connect Google in Tools → Connectors first");
+        setTimeout(() => setDocsError(null), 4000);
         return;
       }
       const data = await res.json();
-      if (data.url) {
-        window.open(data.url, "_blank");
+      if (data.url || data.documentUrl) {
+        window.open(data.url ?? data.documentUrl, "_blank", "noopener,noreferrer");
       } else if (data.error) {
-        setDocsError(data.error.slice(0, 40));
+        setDocsError(String(data.error).slice(0, 40));
         setTimeout(() => setDocsError(null), 3000);
       }
     } catch {

@@ -22,6 +22,11 @@ interface ChatStore {
   setActiveConversation: (id: string | null) => void;
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
+  /**
+   * ChatGPT-style edit: replace the message at `messageId` with `newContent`
+   * and drop every message after it (forks the conversation).
+   */
+  replaceMessageAndTruncate: (messageId: string, newContent: string) => void;
   updateStreamingContent: (content: string) => void;
   setIsStreaming: (isStreaming: boolean) => void;
   setThinkingEnabled: (enabled: boolean) => void;
@@ -48,6 +53,13 @@ export const useChatStore = create<ChatStore>((set) => ({
   setActiveConversation: (id) => set({ activeConversationId: id }),
   setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
+  replaceMessageAndTruncate: (messageId, newContent) =>
+    set((s) => {
+      const idx = s.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return s;
+      const updated = { ...s.messages[idx], content: newContent };
+      return { messages: [...s.messages.slice(0, idx), updated] };
+    }),
   updateStreamingContent: (content) => set({ streamingContent: content }),
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),

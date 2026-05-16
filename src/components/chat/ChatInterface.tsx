@@ -112,7 +112,9 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           isStreaming={isStreaming}
           streamingContent={streamingContent}
           onSend={(content) => sendMessage(content, conversationId)}
-          onEditMessage={(_messageId, newContent) => sendMessage(newContent, conversationId)}
+          onEditMessage={(messageId, newContent) =>
+            sendMessage(newContent, conversationId, { editMessageId: messageId })
+          }
         />
 
         {/* Deep Research progress — animated stages */}

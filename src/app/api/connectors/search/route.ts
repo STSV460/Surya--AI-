@@ -38,6 +38,7 @@ export async function POST(req: Request) {
 
       // Primary: Brave Search API (if key is configured)
       if (process.env.BRAVE_SEARCH_API_KEY) {
+        console.log(`[search] trying brave query="${query}" cap=${cap}`);
         const braveRes = await fetch(
           `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${cap}`,
           {
@@ -52,11 +53,16 @@ export async function POST(req: Request) {
         if (braveRes.ok) {
           const data = await braveRes.json();
           const results = normalizeSearchResults(data.web?.results ?? [], cap);
+          console.log(`[search] backend=brave count=${results.length}`);
           return Response.json({ results });
         }
+        console.log(`[search] brave failed status=${braveRes.status}`);
+      } else {
+        console.log("[search] brave skipped: BRAVE_SEARCH_API_KEY not set");
       }
 
       // Fallback: DuckDuckGo HTML scraping (free, no API key)
+      console.log(`[search] trying duckduckgo query="${query}"`);
       const params = new URLSearchParams({ q: query });
       const ddgRes = await fetch(`https://html.duckduckgo.com/html/?${params}`, {
         headers: {
@@ -97,6 +103,7 @@ export async function POST(req: Request) {
       });
 
       const results = normalizeSearchResults(rawDDG, cap);
+      console.log(`[search] backend=duckduckgo count=${results.length}`);
       return Response.json({ results });
     }
 
