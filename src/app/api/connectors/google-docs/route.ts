@@ -3,6 +3,7 @@
  * we push to Google Docs API using user's workspace OAuth token.
  *
  * POST body: { topic: string, length?: "short"|"medium"|"long", tone?: string }
+ *        or { title: string, content: string } to create a doc from exact chat output.
  * Response: { url, id, title }
  */
 
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": "60" } });
   }
 
-  let body: { topic?: string; length?: string; tone?: string };
+  let body: { topic?: string; length?: string; tone?: string; title?: string; content?: string };
   try {
     body = await req.json();
   } catch {
@@ -41,7 +42,9 @@ export async function POST(req: Request) {
   }
 
   const topic = (body.topic ?? "").trim();
-  if (!topic) return Response.json({ error: "topic is required" }, { status: 400 });
+  const directContent = (body.content ?? "").trim();
+  const directTitle = (body.title ?? "Surya AI Report").trim().slice(0, 120) || "Surya AI Report";
+  if (!topic && !directContent) return Response.json({ error: "topic or content is required" }, { status: 400 });
   const length = body.length === "long" ? "long" : body.length === "short" ? "short" : "medium";
   const tone = (body.tone ?? "professional").slice(0, 40);
 
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // 1. Generate doc content with Kimi K2.5
+  // 1. Generate doc content with Kimi K2.5 when caller provides topic.
   const lengthGuide =
     length === "short"
       ? "3-4 sections, 1-2 paragraphs each"
@@ -61,15 +64,16 @@ export async function POST(req: Request) {
       ? "8-10 sections, 3-5 paragraphs each"
       : "5-6 sections, 2-3 paragraphs each";
 
-  let spec: DocSpec;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const completion = await (aiClient.chat.completions.create as any)({
-      model: MODEL_MAP.kimi,
-      messages: [
-        {
-          role: "system",
-          content: `You generate Google Docs document content as JSON. Return ONLY valid JSON (no markdown fences, no prose):
+  let spec: DocSpec | null = null;
+  if (!directContent) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const completion = await (aiClient.chat.completions.create as any)({
+        model: MODEL_MAP.kimi,
+        messages: [
+          {
+            role: "system",
+            content: `You generate Google Docs document content as JSON. Return ONLY valid JSON (no markdown fences, no prose):
 {
   "title": "Doc title",
   "sections": [
@@ -77,22 +81,23 @@ export async function POST(req: Request) {
   ]
 }
 Rules: ${lengthGuide}. Tone: ${tone}. Well-structured, clear, factual.`,
-        },
-        { role: "user", content: `Topic: ${topic}` },
-      ],
-      stream: false,
-      maxTokens: 12288,
-    });
-    const text: string = completion?.choices?.[0]?.message?.content ?? "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON in response");
-    spec = JSON.parse(jsonMatch[0]) as DocSpec;
-    if (!spec.title || !Array.isArray(spec.sections) || spec.sections.length === 0) {
-      throw new Error("Invalid doc shape");
+          },
+          { role: "user", content: `Topic: ${topic}` },
+        ],
+        stream: false,
+        maxTokens: 12288,
+      });
+      const text: string = completion?.choices?.[0]?.message?.content ?? "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON in response");
+      spec = JSON.parse(jsonMatch[0]) as DocSpec;
+      if (!spec.title || !Array.isArray(spec.sections) || spec.sections.length === 0) {
+        throw new Error("Invalid doc shape");
+      }
+    } catch (err) {
+      console.error("[docs] gen failed:", err);
+      return Response.json({ error: "Failed to generate doc content" }, { status: 500 });
     }
-  } catch (err) {
-    console.error("[docs] gen failed:", err);
-    return Response.json({ error: "Failed to generate doc content" }, { status: 500 });
   }
 
   // 2. Create empty doc
@@ -101,7 +106,7 @@ Rules: ${lengthGuide}. Tone: ${tone}. Well-structured, clear, factual.`,
     const createRes = await fetch("https://docs.googleapis.com/v1/documents", {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ title: spec.title }),
+      body: JSON.stringify({ title: directContent ? directTitle : spec!.title }),
     });
     if (!createRes.ok) {
       const errBody = await createRes.text();
@@ -119,10 +124,14 @@ Rules: ${lengthGuide}. Tone: ${tone}. Well-structured, clear, factual.`,
   // Strategy: build one big text block with newlines, insert at index 1
   // (start of body), then apply HEADING_1 style to each section heading line.
   const lines: { text: string; isHeading: boolean }[] = [];
-  for (const section of spec.sections) {
-    lines.push({ text: section.heading + "\n", isHeading: true });
-    for (const para of section.paragraphs) {
-      lines.push({ text: para + "\n\n", isHeading: false });
+  if (directContent) {
+    lines.push({ text: directContent + "\n", isHeading: false });
+  } else {
+    for (const section of spec!.sections) {
+      lines.push({ text: section.heading + "\n", isHeading: true });
+      for (const para of section.paragraphs) {
+        lines.push({ text: para + "\n\n", isHeading: false });
+      }
     }
   }
   const fullText = lines.map((l) => l.text).join("");
@@ -167,7 +176,7 @@ Rules: ${lengthGuide}. Tone: ${tone}. Well-structured, clear, factual.`,
 
   return Response.json({
     id: documentId,
-    title: spec.title,
+    title: directContent ? directTitle : spec!.title,
     url: `https://docs.google.com/document/d/${documentId}/edit`,
   });
 }

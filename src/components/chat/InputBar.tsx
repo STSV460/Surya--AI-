@@ -25,9 +25,23 @@ interface InputBarProps {
   enableVideoGen?: boolean;
   onToggleVideoGen?: () => void;
   onDeepResearch?: (question: string) => void;
+  draftMessage?: { id: number; content: string } | null;
+  onDraftConsumed?: () => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnectors, onToggleConnectors, enableWebSearch, onToggleWebSearch, onDeepResearch }: InputBarProps) {
+export function InputBar({
+  onSend,
+  onStop,
+  isStreaming,
+  disabled,
+  enableConnectors,
+  onToggleConnectors,
+  enableWebSearch,
+  onToggleWebSearch,
+  onDeepResearch,
+  draftMessage,
+  onDraftConsumed,
+}: InputBarProps) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -60,6 +74,13 @@ export function InputBar({ onSend, onStop, isStreaming, disabled, enableConnecto
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!draftMessage) return;
+    setValue(draftMessage.content);
+    textareaRef.current?.focus();
+    onDraftConsumed?.();
+  }, [draftMessage, onDraftConsumed]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey && !isStreaming) {

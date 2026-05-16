@@ -4,7 +4,22 @@ import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { ChevronDown, ChevronRight, Brain, Code2, FileText, Play, Sparkles, Copy, Check, RotateCcw } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Brain,
+  Code2,
+  FileText,
+  Play,
+  Sparkles,
+  Copy,
+  Check,
+  RotateCcw,
+  Pencil,
+  Volume2,
+  VolumeX,
+  Loader2,
+} from "lucide-react";
 import { CitationCard } from "./CitationCard";
 import { StreamingText } from "./StreamingText";
 import type { Message, ArtifactType } from "@/types/chat";
@@ -61,6 +76,7 @@ interface MessageBubbleProps {
   streamingContent?: string;
   onRegenerate?: () => void;
   canRegenerate?: boolean;
+  onEdit?: (content: string) => void;
 }
 
 /**
@@ -73,16 +89,63 @@ export const MessageBubble = memo(function MessageBubble({
   streamingContent = "",
   onRegenerate,
   canRegenerate = false,
+  onEdit,
 }: MessageBubbleProps) {
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [docStatus, setDocStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [docError, setDocError] = useState<string | null>(null);
   const isUser = message.role === "user";
   const displayContent = isStreaming ? streamingContent : message.content;
+
   function copyMessage() {
     navigator.clipboard.writeText(displayContent).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     });
+  }
+
+  function speakMessage() {
+    if (!("speechSynthesis" in window)) {
+      setDocError("Speech is not supported in this browser.");
+      return;
+    }
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(toPlainText(displayContent));
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    setSpeaking(true);
+  }
+
+  async function sendToGoogleDocs() {
+    if (!displayContent.trim()) return;
+    setDocStatus("saving");
+    setDocError(null);
+    try {
+      const res = await fetch("/api/connectors/google-docs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: makeDocTitle(displayContent),
+          content: displayContent,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Google Docs export failed");
+      setDocStatus("saved");
+      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
+      setTimeout(() => setDocStatus("idle"), 2500);
+    } catch (err) {
+      setDocStatus("error");
+      setDocError(err instanceof Error ? err.message : "Google Docs export failed");
+    }
   }
 
   return (
@@ -231,7 +294,7 @@ export const MessageBubble = memo(function MessageBubble({
         {!isStreaming && displayContent && (
           <div
             className={cn(
-              "mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+              "mt-2 inline-flex flex-wrap items-center gap-1 rounded-lg border border-white/8 bg-surface-2/80 px-1 py-0.5 opacity-90 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100",
               isUser ? "justify-end" : "justify-start"
             )}
           >
@@ -239,23 +302,85 @@ export const MessageBubble = memo(function MessageBubble({
               type="button"
               onClick={copyMessage}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
+              aria-label="Copy message"
               title="Copy message"
             >
               {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
             </button>
+            {isUser && onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(displayContent)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
+                aria-label="Edit message"
+                title="Edit message"
+              >
+                <Pencil size={13} />
+              </button>
+            )}
+            {!isUser && (
+              <button
+                type="button"
+                onClick={speakMessage}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
+                aria-label={speaking ? "Stop speaking" : "Speak message"}
+                title={speaking ? "Stop speaking" : "Speak message"}
+              >
+                {speaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
+              </button>
+            )}
+            {!isUser && (
+              <button
+                type="button"
+                onClick={sendToGoogleDocs}
+                disabled={docStatus === "saving"}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200 disabled:cursor-wait disabled:opacity-60"
+                aria-label="Put in Google Docs"
+                title="Put in Google Docs"
+              >
+                {docStatus === "saving" ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : docStatus === "saved" ? (
+                  <Check size={13} className="text-green-400" />
+                ) : (
+                  <FileText size={13} />
+                )}
+              </button>
+            )}
             {!isUser && canRegenerate && onRegenerate && (
               <button
                 type="button"
                 onClick={onRegenerate}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
+                aria-label="Regenerate"
                 title="Regenerate"
               >
                 <RotateCcw size={13} />
               </button>
             )}
+            {docError && <span className="ml-1 text-[11px] text-red-400">{docError}</span>}
           </div>
         )}
       </div>
     </div>
   );
 });
+
+function toPlainText(value: string) {
+  return value
+    .replace(/```[\s\S]*?```/g, " code block omitted ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[#>*_~|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function makeDocTitle(value: string) {
+  const firstLine =
+    value
+      .split("\n")
+      .map((line) => line.replace(/^#+\s*/, "").trim())
+      .find(Boolean) ?? "Surya AI Report";
+  return firstLine.slice(0, 90);
+}
