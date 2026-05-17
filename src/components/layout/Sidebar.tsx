@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { Plus, Settings, MessageSquare, FolderOpen, Search, Code2, Film, MoreHorizontal, Pencil, Trash2, CalendarClock } from "lucide-react";
+import { Plus, Settings, MessageSquare, FolderOpen, Search, Code2, Film, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import {
   DropdownMenu,
@@ -285,18 +285,6 @@ export function Sidebar() {
         >
           <Code2 size={15} />
           Code
-        </Link>
-        <Link
-          href="/crew-builder"
-          className={cn(
-            "flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors",
-            pathname.startsWith("/crew-builder")
-              ? "bg-surface-2 text-white"
-              : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
-          )}
-        >
-          <CalendarClock size={15} />
-          Scheduled Tasks
         </Link>
       </div>
 
