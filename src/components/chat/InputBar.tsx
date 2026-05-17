@@ -1,9 +1,8 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp, Users } from "lucide-react";
+import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CrewName } from "@/types/chat";
 
 interface AttachedFile {
   name: string;
@@ -25,10 +24,6 @@ interface InputBarProps {
   onToggleImageGen?: () => void;
   enableVideoGen?: boolean;
   onToggleVideoGen?: () => void;
-  enableCrew?: boolean;
-  onToggleCrew?: () => void;
-  crewMode?: CrewName;
-  onCrewModeChange?: (mode: CrewName) => void;
   onDeepResearch?: (question: string) => void;
   draftMessage?: { id: number; content: string } | null;
   onDraftConsumed?: () => void;
@@ -43,8 +38,6 @@ export function InputBar({
   onToggleConnectors,
   enableWebSearch,
   onToggleWebSearch,
-  enableCrew,
-  onToggleCrew,
   onDeepResearch,
   draftMessage,
   onDraftConsumed,
@@ -62,7 +55,7 @@ export function InputBar({
   const canSend = (!!value.trim() || attachments.length > 0) && !disabled;
 
   // Count active tools for badge
-  const activeToolCount = [enableConnectors, enableWebSearch, enableCrew].filter(Boolean).length;
+  const activeToolCount = [enableConnectors, enableWebSearch].filter(Boolean).length;
 
   // Close tools popup on outside click
   useEffect(() => {
@@ -306,46 +299,6 @@ export function InputBar({
                       )} />
                     </div>
                   </button>
-                )}
-
-                {/* Scheduled task mode */}
-                {onToggleCrew && (
-                  <div className="rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => { onToggleCrew(); }}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
-                        enableCrew
-                          ? "text-surya-500 bg-surya-500/10"
-                          : "text-gray-400 hover:text-white hover:bg-white/6"
-                      )}
-                    >
-                      <Users size={14} className="shrink-0" />
-                      <div className="flex-1 text-left">
-                        <p className="text-[13px] font-medium leading-none mb-0.5">Scheduled Task</p>
-                        <p className="text-[11px] text-gray-500 leading-none">Run this later or repeat it</p>
-                      </div>
-                      <div className={cn(
-                        "w-7 h-4 rounded-full transition-colors relative shrink-0",
-                        enableCrew ? "bg-surya-500" : "bg-white/15"
-                      )}>
-                        <div className={cn(
-                          "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
-                          enableCrew ? "left-3.5" : "left-0.5"
-                        )} />
-                      </div>
-                    </button>
-                    {enableCrew && (
-                      <p className="px-2 pb-1 text-[11px] leading-4 text-gray-500">
-                        Send a task like “daily AI news brief” or “review my code every Friday”.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {(onToggleCrew && (onToggleConnectors || onToggleWebSearch)) && (
-                  <div className="h-px bg-white/6 mx-2 my-1.5" />
                 )}
 
                 {/* Image/Video gen moved to /media — removed from chat */}

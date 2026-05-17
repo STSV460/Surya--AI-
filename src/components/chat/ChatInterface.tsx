@@ -35,10 +35,6 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     setEnableImageGen,
     enableVideoGen,
     setEnableVideoGen,
-    enableCrew,
-    setEnableCrew,
-    crewMode,
-    setCrewMode,
     crewEvents,
   } = useChat(projectId);
 
@@ -150,10 +146,6 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
             onToggleImageGen={() => setEnableImageGen(!enableImageGen)}
             enableVideoGen={enableVideoGen}
             onToggleVideoGen={() => setEnableVideoGen(!enableVideoGen)}
-            enableCrew={enableCrew}
-            onToggleCrew={() => setEnableCrew(!enableCrew)}
-            crewMode={crewMode}
-            onCrewModeChange={setCrewMode}
             onDeepResearch={(question) => startResearch(question, conversationId, projectId)}
           />
         </div>
