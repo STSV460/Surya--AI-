@@ -45,8 +45,6 @@ export function InputBar({
   onToggleWebSearch,
   enableCrew,
   onToggleCrew,
-  crewMode = "research",
-  onCrewModeChange,
   onDeepResearch,
   draftMessage,
   onDraftConsumed,
@@ -193,7 +191,7 @@ export function InputBar({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Message Jarvis"
+        placeholder="Message Surya AI"
         rows={1}
         style={{ minHeight: "52px", maxHeight: "240px", resize: "none" }}
         className="w-full bg-transparent px-5 pt-4 pb-1 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none overflow-y-auto"
@@ -310,7 +308,7 @@ export function InputBar({
                   </button>
                 )}
 
-                {/* Crew mode */}
+                {/* Scheduled task mode */}
                 {onToggleCrew && (
                   <div className="rounded-xl">
                     <button
@@ -325,8 +323,8 @@ export function InputBar({
                     >
                       <Users size={14} className="shrink-0" />
                       <div className="flex-1 text-left">
-                        <p className="text-[13px] font-medium leading-none mb-0.5">Crew Mode</p>
-                        <p className="text-[11px] text-gray-500 leading-none">Multi-agent workflows</p>
+                        <p className="text-[13px] font-medium leading-none mb-0.5">Scheduled Task</p>
+                        <p className="text-[11px] text-gray-500 leading-none">Run this later or repeat it</p>
                       </div>
                       <div className={cn(
                         "w-7 h-4 rounded-full transition-colors relative shrink-0",
@@ -338,24 +336,10 @@ export function InputBar({
                         )} />
                       </div>
                     </button>
-                    {enableCrew && onCrewModeChange && (
-                      <div className="mt-1 grid grid-cols-2 gap-1 px-2 pb-1">
-                        {(["research", "email", "content", "code", "planner", "custom"] as CrewName[]).map((mode) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => onCrewModeChange(mode)}
-                            className={cn(
-                              "h-7 rounded-lg px-2 text-[11px] capitalize transition-colors",
-                              crewMode === mode
-                                ? "bg-white text-black"
-                                : "bg-white/[0.04] text-gray-400 hover:text-white hover:bg-white/8"
-                            )}
-                          >
-                            {mode}
-                          </button>
-                        ))}
-                      </div>
+                    {enableCrew && (
+                      <p className="px-2 pb-1 text-[11px] leading-4 text-gray-500">
+                        Send a task like “daily AI news brief” or “review my code every Friday”.
+                      </p>
                     )}
                   </div>
                 )}

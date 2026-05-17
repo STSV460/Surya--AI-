@@ -6,6 +6,30 @@ import { useChatStore } from "@/stores/chatStore";
 import type { StreamEvent, Message, ArtifactType, SearchResult, CrewProgressEvent } from "@/types/chat";
 const randomUUID = () => crypto.randomUUID();
 
+type ScheduleFrequency = "once" | "hourly" | "daily" | "weekly";
+
+function inferScheduleFrequency(text: string): ScheduleFrequency {
+  const value = text.toLowerCase();
+  if (value.includes("hourly") || value.includes("every hour")) return "hourly";
+  if (value.includes("weekly") || value.includes("every week") || value.includes("friday") || value.includes("monday")) return "weekly";
+  if (value.includes("once") || value.includes("tomorrow") || value.includes("one time")) return "once";
+  return "daily";
+}
+
+function inferScheduleTarget(text: string) {
+  const value = text.toLowerCase();
+  if (value.includes("code") || value.includes("bug") || value.includes("build") || value.includes("project")) return "code";
+  if (value.includes("research") || value.includes("news") || value.includes("search") || value.includes("brief")) return "research";
+  return "chat";
+}
+
+function inferScheduleTitle(text: string) {
+  const clean = text.replace(/^\/schedule\s*/i, "").replace(/\s+/g, " ").trim();
+  if (!clean) return "Scheduled task";
+  const first = clean.split(/[.!?]/)[0] ?? clean;
+  return first.length > 58 ? `${first.slice(0, 55).trim()}...` : first;
+}
+
 export function useChat(projectId?: string) {
   const router = useRouter();
   const abortRef = useRef<AbortController | null>(null);
@@ -67,32 +91,50 @@ export function useChat(projectId?: string) {
       abortRef.current = new AbortController();
 
       try {
-        const endpoint = enableCrew ? "/api/crew" : "/api/chat";
-        const res = await fetch(endpoint, {
+        const scheduleMode = enableCrew || /^\/schedule\b/i.test(content.trim());
+        if (scheduleMode) {
+          const prompt = content.replace(/^\/schedule\s*/i, "").trim();
+          if (!prompt) throw new Error("Tell Surya what task to schedule.");
+          const res = await fetch("/api/scheduled-tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: inferScheduleTitle(content),
+              prompt,
+              frequency: inferScheduleFrequency(prompt),
+              target: inferScheduleTarget(prompt),
+              model: "opus",
+            }),
+            signal: abortRef.current.signal,
+          });
+          const data = await res.json();
+          if (!res.ok || !data.task) throw new Error(data.error ?? "Schedule failed");
+          const assistantMsg: Message = {
+            id: randomUUID(),
+            conversationId: convId ?? "",
+            role: "assistant",
+            content: `Scheduled "${data.task.title}". You can see it in Scheduled Tasks.`,
+            artifacts: [],
+            createdAt: new Date().toISOString(),
+          };
+          addMessage(assistantMsg);
+          return;
+        }
+
+        const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            enableCrew
-              ? {
-                  crewName: crewMode,
-                  inputs: {
-                    message: content,
-                    conversationId: convId,
-                    projectId: projectId ?? undefined,
-                  },
-                }
-              : {
-                  message: content,
-                  editMessageId,
-                  thinking: thinkingEnabled,
-                  conversationId: convId,
-                  projectId: projectId ?? undefined,
-                  enableConnectors,
-                  enableWebSearch,
-                  enableImageGen,
-                  enableVideoGen,
-                }
-          ),
+          body: JSON.stringify({
+            message: content,
+            editMessageId,
+            thinking: thinkingEnabled,
+            conversationId: convId,
+            projectId: projectId ?? undefined,
+            enableConnectors,
+            enableWebSearch,
+            enableImageGen,
+            enableVideoGen,
+          }),
           signal: abortRef.current.signal,
         });
 
@@ -233,7 +275,6 @@ export function useChat(projectId?: string) {
       enableImageGen,
       enableVideoGen,
       enableCrew,
-      crewMode,
       addMessage,
       replaceFromEditedMessage,
       updateStreamingContent,

@@ -420,13 +420,31 @@ export async function executeTool(
   }
 
   try {
+    const input = { ...toolInput };
+    if (toolName === "web_search") {
+      const query =
+        typeof input.query === "string"
+          ? input.query
+          : typeof input.q === "string"
+          ? input.q
+          : typeof input.search === "string"
+          ? input.search
+          : typeof input.searchQuery === "string"
+          ? input.searchQuery
+          : typeof input.topic === "string"
+          ? input.topic
+          : "";
+      input.query = query;
+      if (typeof input.limit !== "number") input.limit = 8;
+    }
+
     const res = await fetch(`${getAppUrl()}${route.path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Cookie: cookie,
       },
-      body: JSON.stringify({ action: route.action, ...toolInput }),
+      body: JSON.stringify({ action: route.action, ...input }),
     });
 
     if (!res.ok) {

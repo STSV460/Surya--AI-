@@ -106,7 +106,8 @@ export function Sidebar() {
     fetch("/api/conversations")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.documents) setConversations(data.documents);
+        const docs = Array.isArray(data?.documents) ? data.documents : Array.isArray(data) ? data : null;
+        if (docs) setConversations(docs);
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,7 +121,8 @@ export function Sidebar() {
       fetch("/api/conversations")
         .then((r) => r.ok ? r.json() : null)
         .then((data) => {
-          if (data?.documents) setConversations(data.documents);
+          const docs = Array.isArray(data?.documents) ? data.documents : Array.isArray(data) ? data : null;
+          if (docs) setConversations(docs);
         })
         .catch(() => {});
     }

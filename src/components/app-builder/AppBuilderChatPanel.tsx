@@ -5,7 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload, Settings, Globe2, FolderGit2, Check, Wrench } from "lucide-react";
+import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload, Settings, Globe2, FolderGit2, Wrench, Trash2 } from "lucide-react";
 import type { UseAppBuilderReturn } from "@/hooks/useAppBuilder";
 import type { WCStatus } from "@/hooks/useWebContainer";
 import { ClarifyQuestions } from "@/components/app-builder/ClarifyQuestions";
@@ -29,123 +29,45 @@ const EXAMPLE_PROMPTS = [
   "Make a weather dashboard UI",
 ];
 
-const SKILLS = [
-  {
-    id: "claude-code",
-    label: "Claude Code",
-    description: "Plan first, edit surgically, verify flows.",
-    instructions: `---
-name: claude-code
-description: Code skill for careful agentic coding with planning, narrow diffs, and verification.
----
-
-Think like a senior pair programmer. Before generating code, identify goal, current constraints, and success criteria. Prefer small, composable components, readable names, and practical defaults. Keep changes scoped. Add complete interactive behavior, empty/loading/error states, and accessible controls. Verify mentally that every button/input works before final output.`,
-  },
-  {
-    id: "codex",
-    label: "Codex",
-    description: "Production-grade code with tests in mind.",
-    instructions: `---
-name: codex
-description: Code skill for production-ready implementation and regression-aware coding.
----
-
-Build as a production engineer. Preserve existing behavior, avoid dead UI, and make all state transitions explicit. Choose simple data structures, pure helpers, and deterministic rendering. Handle edge cases that users will hit: empty data, long text, repeated clicks, invalid input, and mobile layout. Keep code easy to inspect and extend.`,
-  },
-  {
-    id: "antigravity",
-    label: "Antigravity",
-    description: "Fast prototype, polished motion, bold UI.",
-    instructions: `---
-name: antigravity
-description: Code skill for fast, visually bold prototypes with high interaction polish.
----
-
-Optimize for a memorable working prototype. Use strong visual hierarchy, crisp motion, and satisfying micro-interactions without sacrificing usability. Ship complete workflows instead of static mockups. Prefer direct manipulation, instant feedback, and lively but restrained transitions. Keep performance light and responsive.`,
-  },
-  {
-    id: "openclaw",
-    label: "OpenClaw",
-    description: "Open-source style, modular, hackable.",
-    instructions: `---
-name: openclaw
-description: Code skill for modular open-source style apps that are easy to fork and modify.
----
-
-Write hackable code. Separate data, rendering, and actions cleanly. Favor semantic HTML, plain functions, small modules, and clear comments only where they help future edits. Avoid framework magic unless requested. Make configuration obvious and keep styling organized with reusable tokens/classes.`,
-  },
-] as const;
-
-type SkillId = (typeof SKILLS)[number]["id"];
-
-const MCP_SERVERS = [
-  {
-    id: "filesystem",
-    label: "Files",
-    description: "Project tree, file context, surgical edits.",
-  },
-  {
-    id: "terminal",
-    label: "Terminal",
-    description: "Install, lint, build, run commands.",
-  },
-  {
-    id: "preview-browser",
-    label: "Preview",
-    description: "Inspect UI, interactions, layout issues.",
-  },
-  {
-    id: "package-docs",
-    label: "Docs",
-    description: "Library docs, APIs, version-aware usage.",
-  },
-  {
-    id: "github",
-    label: "GitHub",
-    description: "Issues, pull requests, repository context.",
-  },
-  {
-    id: "database",
-    label: "Database",
-    description: "Schema, records, persistence decisions.",
-  },
-] as const;
-
-type McpId = (typeof MCP_SERVERS)[number]["id"];
-
 interface CustomSkill {
   id: string;
   label: string;
   instructions: string;
+  scope?: "global" | "project";
+}
+
+interface CustomMcp {
+  id: string;
+  label: string;
+  url: string;
+  scope?: "global" | "project";
 }
 
 interface CodeSettingsState {
-  globalSkillIds: SkillId[];
-  projectSkillIds: SkillId[];
-  globalMcpIds: McpId[];
-  projectMcpIds: McpId[];
+  globalSkillIds: string[];
+  projectSkillIds: string[];
+  globalMcpIds: string[];
+  projectMcpIds: string[];
   customMcpUrl: string;
   customSkills: CustomSkill[];
+  customMcps: CustomMcp[];
 }
 
 const DEFAULT_CODE_SETTINGS: CodeSettingsState = {
-  globalSkillIds: ["codex"],
-  projectSkillIds: ["claude-code"],
-  globalMcpIds: ["filesystem", "terminal"],
-  projectMcpIds: ["preview-browser"],
+  globalSkillIds: [],
+  projectSkillIds: [],
+  globalMcpIds: [],
+  projectMcpIds: [],
   customMcpUrl: "",
   customSkills: [],
+  customMcps: [],
 };
-
-function unique<T>(items: T[]) {
-  return Array.from(new Set(items));
-}
 
 function loadSettings(key: string, fallback: CodeSettingsState) {
   if (typeof window === "undefined") return fallback;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(key) ?? "null") as Partial<CodeSettingsState> | null;
-    return parsed ? { ...fallback, ...parsed } : fallback;
+    return parsed ? { ...fallback, ...parsed, customMcps: parsed.customMcps ?? fallback.customMcps } : fallback;
   } catch {
     return fallback;
   }
@@ -157,20 +79,10 @@ function saveSettings(key: string, settings: CodeSettingsState) {
 }
 
 function buildIdePrompt(settings: CodeSettingsState, prompt: string) {
-  const skillIds = unique([...settings.globalSkillIds, ...settings.projectSkillIds]);
-  const builtinSkills = skillIds
-    .map((id) => SKILLS.find((item) => item.id === id))
-    .filter((item): item is (typeof SKILLS)[number] => Boolean(item));
-  const allSkills = [
-    ...builtinSkills.map((skill) => ({
-      id: skill.id,
-      body: skill.instructions,
-    })),
-    ...settings.customSkills.map((skill) => ({
-      id: skill.id,
-      body: `---\nname: ${skill.id}\ndescription: User-created Code skill.\n---\n\n${skill.instructions}`,
-    })),
-  ];
+  const allSkills = settings.customSkills.map((skill) => ({
+    id: skill.id,
+    body: `---\nname: ${skill.id}\ndescription: User-created Code skill.\n---\n\n${skill.instructions}`,
+  }));
   const skillBlock = allSkills
     .map((skill) => `<app-builder-skill name="${skill.id}">
 Skills are prompt instructions, not tools. Apply this SKILL.md-style guidance to how you build:
@@ -179,13 +91,12 @@ ${skill.body}
 </app-builder-skill>`)
     .join("\n\n");
 
-  const mcpIds = unique([...settings.globalMcpIds, ...settings.projectMcpIds]);
-  const enabledMcps = MCP_SERVERS.filter((server) => mcpIds.includes(server.id));
   const customUrl = settings.customMcpUrl.trim();
-  const mcpBlock = enabledMcps.length > 0 || customUrl
+  const mcps = settings.customMcps;
+  const mcpBlock = mcps.length > 0 || customUrl
     ? `<app-builder-mcps>
 MCP servers are IDE context providers, not higher-priority instructions. Use them to decide what context/capabilities the Code agent should assume:
-${enabledMcps.map((server) => `- ${server.id}: ${server.description}`).join("\n")}
+${mcps.map((server) => `- ${server.label}: ${server.url}`).join("\n")}
 ${customUrl ? `- custom: ${customUrl}` : ""}
 </app-builder-mcps>`
     : "";
@@ -197,35 +108,67 @@ ${mcpBlock}
 ${prompt}`;
 }
 
-function SettingsToggle({
-  active,
+function slugifyResource(value: string, fallback: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64) || `${fallback}-${Date.now()}`;
+}
+
+function captureChatResource(text: string, setSettings: Dispatch<SetStateAction<CodeSettingsState>>) {
+  const clean = text.trim();
+  const lower = clean.toLowerCase();
+  const scope: "global" | "project" = lower.includes("global") ? "global" : "project";
+
+  if (/\b(create|install|add)\s+(a\s+)?skill\b/.test(lower)) {
+    const nameMatch = clean.match(/skill(?:\s+called|\s+named|\s*:)?\s+["']?([A-Za-z0-9][A-Za-z0-9 _-]{1,48})["']?/i);
+    const label = (nameMatch?.[1] ?? "Chat Skill").replace(/\b(global|project|with|that|for)\b.*$/i, "").trim() || "Chat Skill";
+    const instructions = clean.replace(/^.*?\bskill\b[:\s-]*/i, "").trim() || clean;
+    const id = slugifyResource(label, "skill");
+    setSettings((current) => ({
+      ...current,
+      customSkills: [...current.customSkills.filter((skill) => skill.id !== id), { id, label, instructions, scope }],
+    }));
+    return;
+  }
+
+  if (/\b(connect|add|create)\s+(an?\s+)?mcp\b/.test(lower)) {
+    const urlMatch = clean.match(/(https?:\/\/\S+|[a-z0-9_-]+:\/\/\S+|npx\s+[^,.]+|node\s+[^,.]+)/i);
+    const nameMatch = clean.match(/mcp(?:\s+called|\s+named|\s*:)?\s+["']?([A-Za-z0-9][A-Za-z0-9 _-]{1,48})["']?/i);
+    const label = (nameMatch?.[1] ?? "Chat MCP").replace(/\b(global|project|with|using|at)\b.*$/i, "").trim() || "Chat MCP";
+    const url = urlMatch?.[1]?.trim() ?? clean;
+    const id = slugifyResource(label, "mcp");
+    setSettings((current) => ({
+      ...current,
+      customMcps: [...(current.customMcps ?? []).filter((mcp) => mcp.id !== id), { id, label, url, scope }],
+    }));
+  }
+}
+
+function ResourceCard({
   title,
   detail,
-  onClick,
+  onDelete,
 }: {
-  active: boolean;
   title: string;
   detail: string;
-  onClick: () => void;
+  onDelete?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex min-h-14 items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
-        active
-          ? "border-surya-500/45 bg-surya-500/12 text-white"
-          : "border-white/8 bg-surface-2/70 text-gray-400 hover:border-white/15 hover:text-white"
-      }`}
+    <div
+      className="flex min-h-14 items-start justify-between gap-3 rounded-lg border border-white/8 bg-surface-2/70 px-3 py-2 text-left text-gray-300"
     >
       <span className="min-w-0">
         <span className="block text-xs font-medium">{title}</span>
         <span className="mt-1 line-clamp-2 block text-[10px] leading-relaxed text-gray-500">{detail}</span>
       </span>
-      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? "border-surya-500 bg-surya-500" : "border-white/15"}`}>
-        {active && <Check size={11} className="text-white" />}
-      </span>
-    </button>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="mt-0.5 rounded p-1 text-gray-600 hover:bg-red-500/10 hover:text-red-300"
+          title="Remove"
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -244,18 +187,12 @@ function CodeSettingsModal({
 }) {
   const [skillName, setSkillName] = useState("");
   const [skillBody, setSkillBody] = useState("");
+  const [skillScope, setSkillScope] = useState<"global" | "project">("project");
+  const [mcpName, setMcpName] = useState("");
+  const [mcpUrl, setMcpUrl] = useState("");
+  const [mcpScope, setMcpScope] = useState<"global" | "project">("project");
 
   if (!open) return null;
-
-  const toggle = <T extends string,>(key: keyof CodeSettingsState, id: T) => {
-    setSettings((current) => {
-      const list = current[key] as T[];
-      return {
-        ...current,
-        [key]: list.includes(id) ? list.filter((item) => item !== id) : [...list, id],
-      };
-    });
-  };
 
   const addSkill = () => {
     const label = skillName.trim();
@@ -264,11 +201,37 @@ function CodeSettingsModal({
     const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64) || `skill-${Date.now()}`;
     setSettings((current) => ({
       ...current,
-      customSkills: [...current.customSkills.filter((skill) => skill.id !== id), { id, label, instructions }],
+      customSkills: [...current.customSkills.filter((skill) => skill.id !== id), { id, label, instructions, scope: skillScope }],
     }));
     setSkillName("");
     setSkillBody("");
   };
+
+  const addMcp = () => {
+    const label = mcpName.trim();
+    const url = mcpUrl.trim();
+    if (!label || !url) return;
+    const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64) || `mcp-${Date.now()}`;
+    setSettings((current) => ({
+      ...current,
+      customMcps: [...(current.customMcps ?? []).filter((mcp) => mcp.id !== id), { id, label, url, scope: mcpScope }],
+    }));
+    setMcpName("");
+    setMcpUrl("");
+  };
+
+  const removeSkill = (id: string) => {
+    setSettings((current) => ({ ...current, customSkills: current.customSkills.filter((skill) => skill.id !== id) }));
+  };
+
+  const removeMcp = (id: string) => {
+    setSettings((current) => ({ ...current, customMcps: (current.customMcps ?? []).filter((mcp) => mcp.id !== id) }));
+  };
+
+  const globalSkills = settings.customSkills.filter((skill) => skill.scope === "global");
+  const projectSkills = settings.customSkills.filter((skill) => skill.scope !== "global");
+  const globalMcps = (settings.customMcps ?? []).filter((mcp) => mcp.scope === "global");
+  const projectMcps = (settings.customMcps ?? []).filter((mcp) => mcp.scope !== "global");
 
   return (
     <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm">
@@ -290,14 +253,12 @@ function CodeSettingsModal({
               Global Skills
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {SKILLS.map((skill) => (
-                <SettingsToggle
-                  key={`global-${skill.id}`}
-                  active={settings.globalSkillIds.includes(skill.id)}
-                  title={skill.label}
-                  detail={skill.description}
-                  onClick={() => toggle("globalSkillIds", skill.id)}
-                />
+              {globalSkills.length === 0 ? (
+                <p className="col-span-full rounded-lg border border-white/8 bg-surface-2/50 px-3 py-4 text-xs text-gray-500">
+                  No global skills created yet.
+                </p>
+              ) : globalSkills.map((skill) => (
+                <ResourceCard key={`global-${skill.id}`} title={skill.label} detail={skill.instructions} onDelete={() => removeSkill(skill.id)} />
               ))}
             </div>
           </section>
@@ -308,14 +269,12 @@ function CodeSettingsModal({
               Project Skills
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {SKILLS.map((skill) => (
-                <SettingsToggle
-                  key={`project-${skill.id}`}
-                  active={settings.projectSkillIds.includes(skill.id)}
-                  title={skill.label}
-                  detail={skill.description}
-                  onClick={() => toggle("projectSkillIds", skill.id)}
-                />
+              {projectSkills.length === 0 ? (
+                <p className="col-span-full rounded-lg border border-white/8 bg-surface-2/50 px-3 py-4 text-xs text-gray-500">
+                  No project skills created yet. Ask chat to create one.
+                </p>
+              ) : projectSkills.map((skill) => (
+                <ResourceCard key={`project-${skill.id}`} title={skill.label} detail={skill.instructions} onDelete={() => removeSkill(skill.id)} />
               ))}
             </div>
           </section>
@@ -329,44 +288,45 @@ function CodeSettingsModal({
               <div>
                 <p className="mb-2 text-[11px] text-gray-500">Global</p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {MCP_SERVERS.map((server) => (
-                    <SettingsToggle
-                      key={`global-mcp-${server.id}`}
-                      active={settings.globalMcpIds.includes(server.id)}
-                      title={server.label}
-                      detail={server.description}
-                      onClick={() => toggle("globalMcpIds", server.id)}
-                    />
+                  {globalMcps.length === 0 ? (
+                    <p className="col-span-full rounded-lg border border-white/8 bg-surface-2/50 px-3 py-4 text-xs text-gray-500">
+                      No global MCPs connected yet.
+                    </p>
+                  ) : globalMcps.map((mcp) => (
+                    <ResourceCard key={`global-mcp-${mcp.id}`} title={mcp.label} detail={mcp.url} onDelete={() => removeMcp(mcp.id)} />
                   ))}
                 </div>
               </div>
               <div>
                 <p className="mb-2 text-[11px] text-gray-500">Project</p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {MCP_SERVERS.map((server) => (
-                    <SettingsToggle
-                      key={`project-mcp-${server.id}`}
-                      active={settings.projectMcpIds.includes(server.id)}
-                      title={server.label}
-                      detail={server.description}
-                      onClick={() => toggle("projectMcpIds", server.id)}
-                    />
+                  {projectMcps.length === 0 ? (
+                    <p className="col-span-full rounded-lg border border-white/8 bg-surface-2/50 px-3 py-4 text-xs text-gray-500">
+                      No project MCPs connected yet. Ask chat to connect one.
+                    </p>
+                  ) : projectMcps.map((mcp) => (
+                    <ResourceCard key={`project-mcp-${mcp.id}`} title={mcp.label} detail={mcp.url} onDelete={() => removeMcp(mcp.id)} />
                   ))}
                 </div>
               </div>
             </div>
-            <input
-              value={settings.customMcpUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, customMcpUrl: event.target.value }))}
-              placeholder="Custom MCP URL"
-              className="mt-2 h-8 w-full rounded-lg border border-white/10 bg-surface-2 px-3 text-xs text-white outline-none placeholder:text-gray-600 focus:border-surya-accent/50"
-            />
           </section>
 
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-white">Create Skill</p>
-              <p className="text-[10px] text-gray-600">Also works through chat: ask Code to create a skill or connect MCP.</p>
+              <p className="text-[10px] text-gray-600">Also works through chat.</p>
+            </div>
+            <div className="flex gap-2">
+              {(["project", "global"] as const).map((scope) => (
+                <button
+                  key={scope}
+                  onClick={() => setSkillScope(scope)}
+                  className={`h-7 rounded-lg px-3 text-[11px] ${skillScope === scope ? "bg-surya-500 text-white" : "bg-surface-2 text-gray-500"}`}
+                >
+                  {scope}
+                </button>
+              ))}
             </div>
             <input
               value={skillName}
@@ -386,17 +346,45 @@ function CodeSettingsModal({
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surya-500 px-3 text-xs font-medium text-white hover:bg-surya-500/85"
             >
               <Plus size={13} />
-              Install project skill
+              Create skill
             </button>
-            {settings.customSkills.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {settings.customSkills.map((skill) => (
-                  <span key={skill.id} className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-gray-400">
-                    {skill.label}
-                  </span>
-                ))}
-              </div>
-            )}
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-white">Connect MCP</p>
+              <p className="text-[10px] text-gray-600">Also works through chat.</p>
+            </div>
+            <div className="flex gap-2">
+              {(["project", "global"] as const).map((scope) => (
+                <button
+                  key={scope}
+                  onClick={() => setMcpScope(scope)}
+                  className={`h-7 rounded-lg px-3 text-[11px] ${mcpScope === scope ? "bg-surya-accent text-white" : "bg-surface-2 text-gray-500"}`}
+                >
+                  {scope}
+                </button>
+              ))}
+            </div>
+            <input
+              value={mcpName}
+              onChange={(event) => setMcpName(event.target.value)}
+              placeholder="MCP name"
+              className="h-8 w-full rounded-lg border border-white/10 bg-surface-2 px-3 text-xs text-white outline-none placeholder:text-gray-600 focus:border-surya-accent/50"
+            />
+            <input
+              value={mcpUrl}
+              onChange={(event) => setMcpUrl(event.target.value)}
+              placeholder="MCP URL or command"
+              className="h-8 w-full rounded-lg border border-white/10 bg-surface-2 px-3 text-xs text-white outline-none placeholder:text-gray-600 focus:border-surya-accent/50"
+            />
+            <button
+              onClick={addMcp}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surya-accent px-3 text-xs font-medium text-white hover:bg-surya-accent/85"
+            >
+              <Plus size={13} />
+              Connect MCP
+            </button>
           </section>
         </div>
       </div>
@@ -539,7 +527,8 @@ export function AppBuilderChatPanel({
       projectSkillIds: project.projectSkillIds,
       projectMcpIds: project.projectMcpIds,
       customMcpUrl: project.customMcpUrl,
-      customSkills: project.customSkills,
+      customSkills: [...global.customSkills.map((skill) => ({ ...skill, scope: "global" as const })), ...project.customSkills.map((skill) => ({ ...skill, scope: skill.scope ?? "project" as const }))],
+      customMcps: [...(global.customMcps ?? []).map((mcp) => ({ ...mcp, scope: "global" as const })), ...(project.customMcps ?? []).map((mcp) => ({ ...mcp, scope: mcp.scope ?? "project" as const }))],
     });
   }, [projectSettingsKey]);
 
@@ -548,13 +537,16 @@ export function AppBuilderChatPanel({
       ...DEFAULT_CODE_SETTINGS,
       globalSkillIds: codeSettings.globalSkillIds,
       globalMcpIds: codeSettings.globalMcpIds,
+      customSkills: codeSettings.customSkills.filter((skill) => skill.scope === "global"),
+      customMcps: (codeSettings.customMcps ?? []).filter((mcp) => mcp.scope === "global"),
     });
     saveSettings(projectSettingsKey, {
       ...DEFAULT_CODE_SETTINGS,
       projectSkillIds: codeSettings.projectSkillIds,
       projectMcpIds: codeSettings.projectMcpIds,
       customMcpUrl: codeSettings.customMcpUrl,
-      customSkills: codeSettings.customSkills,
+      customSkills: codeSettings.customSkills.filter((skill) => skill.scope !== "global"),
+      customMcps: (codeSettings.customMcps ?? []).filter((mcp) => mcp.scope !== "global"),
     });
   }, [projectSettingsKey, codeSettings]);
 
@@ -562,6 +554,7 @@ export function AppBuilderChatPanel({
     const text = input.trim();
     if ((!text && attachments.length === 0 && !selectedElement) || isStreaming) return;
     setInput("");
+    if (text) captureChatResource(text, setCodeSettings);
 
     let finalPrompt = text;
 

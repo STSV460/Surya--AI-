@@ -177,6 +177,131 @@ MCP safety rules:
 - Never reveal tokens, cookies, headers, or private URLs from MCP configuration.
 - Prefer read-only MCP behavior unless the user explicitly asks for changes.`;
 
+const FACTUAL_APP_NOTE = `
+
+Factual/current-data rules:
+- If the app includes quiz questions, sports records, news, standings, finance, product data, or any real-world facts, use provided <web-context> as source of truth.
+- Never rely on stale training data when <web-context> exists.
+- If facts are uncertain, phrase questions so answers can be checked from bundled data inside the app.
+- Generated quiz answer keys MUST match the visible correct option.`;
+
+type WebContextResult = {
+  title: string;
+  url: string;
+  snippet: string;
+};
+
+function needsFreshWebContext(prompt: string) {
+  const value = prompt.toLowerCase();
+  return [
+    "current",
+    "latest",
+    "present",
+    "today",
+    "news",
+    "2026",
+    "points table",
+    "standings",
+    "cricket",
+    "ipl",
+    "odi",
+    "stock",
+    "price",
+    "election",
+    "weather",
+    "quiz",
+  ].some((term) => value.includes(term));
+}
+
+async function fetchFirecrawlContext(query: string): Promise<WebContextResult[]> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return [];
+
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      limit: 5,
+      sources: ["web"],
+      scrapeOptions: {
+        formats: ["markdown"],
+        onlyMainContent: true,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Firecrawl ${res.status}`);
+
+  const data = (await res.json()) as {
+    data?:
+      | { web?: Array<{ title?: string; url?: string; description?: string; markdown?: string }> }
+      | Array<{ title?: string; url?: string; description?: string; markdown?: string }>;
+  };
+  const items = Array.isArray(data.data) ? data.data : data.data?.web ?? [];
+  return items
+    .filter((item) => item.url)
+    .slice(0, 5)
+    .map((item) => ({
+      title: item.title ?? item.url ?? "Web source",
+      url: item.url ?? "",
+      snippet: (item.description ?? item.markdown ?? "").replace(/\s+/g, " ").trim().slice(0, 700),
+    }));
+}
+
+async function fetchGatewayWebContext(query: string): Promise<WebContextResult[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const completion = (await (aiClient.chat.completions.create as any)({
+    model: process.env.WEB_SEARCH_MODEL ?? MODEL_MAP.sonnet,
+    messages: [
+      {
+        role: "user",
+        content: `Find authoritative, recent sources for building an accurate app or quiz about: ${query}`,
+      },
+    ],
+    webSearch: { enabled: true, maxResults: 5 },
+    stream: false,
+    maxTokens: 512,
+  })) as {
+    choices?: Array<{
+      message?: {
+        annotations?: Array<{
+          urlCitation?: { title?: string; url?: string; content?: string };
+          url_citation?: { title?: string; url?: string; content?: string };
+        }>;
+      };
+    }>;
+  };
+
+  return (completion.choices?.[0]?.message?.annotations ?? [])
+    .map((annotation) => annotation.urlCitation ?? annotation.url_citation)
+    .filter((citation): citation is { title?: string; url: string; content?: string } => Boolean(citation?.url))
+    .slice(0, 5)
+    .map((citation) => ({
+      title: citation.title ?? citation.url,
+      url: citation.url,
+      snippet: (citation.content ?? "").replace(/\s+/g, " ").trim().slice(0, 700),
+    }));
+}
+
+async function buildWebContextBlock(prompt: string) {
+  if (!needsFreshWebContext(prompt)) return "";
+  try {
+    const results = await fetchFirecrawlContext(`${prompt} current facts accurate answer key`);
+    const fallback = results.length > 0 ? results : await fetchGatewayWebContext(prompt);
+    if (fallback.length === 0) return "";
+    const lines = fallback
+      .map((result, index) => `${index + 1}. ${result.title}\nURL: ${result.url}\nSnippet: ${result.snippet}`)
+      .join("\n\n");
+    return `\n\n<web-context>\n${lines}\n</web-context>`;
+  } catch (err) {
+    console.warn("[app-builder] web context failed:", err);
+    return "";
+  }
+}
+
 function shouldSkipClarify(prompt: string): boolean {
   // Lovable-style: only ask clarify when the prompt is genuinely vague.
   // Skip clarify (= go straight to thought + code) when ANY of:
@@ -288,6 +413,7 @@ export async function POST(req: Request) {
   } catch (err) {
     console.warn("[app-builder] memory recall failed:", err);
   }
+  const webContextBlock = await buildWebContextBlock(prompt);
 
   // Followups branch — short JSON list of next-step suggestions
   if (mode === "followups") {
@@ -329,7 +455,7 @@ export async function POST(req: Request) {
       const completion = await (aiClient.chat.completions.create as any)({
         model: MODEL_MAP.opus,
         messages: [
-          { role: "system", content: `${PLAN_SYSTEM_PROMPT}${memoryBlock}${MCP_SYSTEM_NOTE}` },
+          { role: "system", content: `${PLAN_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${webContextBlock}${MCP_SYSTEM_NOTE}` },
           {
             role: "user",
             content: `Plan this app idea. Default stack: ${simple ? "Vanilla HTML/CSS/JS" : "React/Vite"}.\n\n${prompt}`,
@@ -406,12 +532,12 @@ export async function POST(req: Request) {
           const chatHistory = body.chatHistory ?? [];
           const hasPackageJson = "package.json" in currentFiles;
           previewMode = hasPackageJson ? "webcontainer" : "srcdoc";
-          systemPrompt = `${hasPackageJson ? WEBCONTAINER_SYSTEM_PROMPT : SIMPLE_SYSTEM_PROMPT}${memoryBlock}${MCP_SYSTEM_NOTE}`;
+          systemPrompt = `${hasPackageJson ? WEBCONTAINER_SYSTEM_PROMPT : SIMPLE_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${webContextBlock}${MCP_SYSTEM_NOTE}`;
           userContent = buildEditPrompt(prompt, currentFiles, chatHistory);
         } else {
           const simple = isSimpleApp(prompt);
           previewMode = simple ? "srcdoc" : "webcontainer";
-          systemPrompt = `${simple ? SIMPLE_SYSTEM_PROMPT : WEBCONTAINER_SYSTEM_PROMPT}${memoryBlock}${MCP_SYSTEM_NOTE}`;
+          systemPrompt = `${simple ? SIMPLE_SYSTEM_PROMPT : WEBCONTAINER_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${webContextBlock}${MCP_SYSTEM_NOTE}`;
           const ans = body.clarifyAnswers ?? {};
           const ansLines = Object.entries(ans)
             .filter(([, v]) => typeof v === "string" && v.trim())

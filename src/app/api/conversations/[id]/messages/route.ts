@@ -1,6 +1,16 @@
 import { auth } from "@/auth";
-import { db } from "@/lib/insforge";
+import { db, insforgeDb } from "@/lib/insforge";
 
+async function resolveUserId(sessionUser: { id?: string | null; email?: string | null }) {
+  if (sessionUser.id) return sessionUser.id;
+  if (!sessionUser.email) return "";
+  const { data } = await insforgeDb
+    .from("profiles")
+    .select("id")
+    .eq("email", sessionUser.email)
+    .maybeSingle();
+  return typeof data?.id === "string" ? data.id : "";
+}
 
 export async function GET(
   _req: Request,
@@ -12,7 +22,8 @@ export async function GET(
   }
 
   const { id } = await params;
-  const userId = (session.user as { id: string }).id;
+  const userId = await resolveUserId(session.user as { id?: string | null; email?: string | null });
+  if (!userId) return new Response("Unauthorized", { status: 401 });
 
   // Verify ownership
   const convResult = (await db.conversations("findOne", {

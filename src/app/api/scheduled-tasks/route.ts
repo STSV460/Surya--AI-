@@ -31,6 +31,18 @@ const deleteTaskSchema = z.object({
   id: z.string().trim().min(1).max(160),
 });
 
+interface ScheduledTaskRow {
+  id: string;
+  userId: string;
+  name: string;
+  prompt: string;
+  cronExpression?: string;
+  isActive?: boolean;
+  nextRun?: string | null;
+  lastRun?: string | null;
+  createdAt?: string;
+}
+
 function nextRunAt(frequency: z.infer<typeof frequencySchema>, runAt?: string) {
   const base = runAt ? new Date(runAt) : new Date(Date.now() + 60 * 60 * 1000);
   if (Number.isNaN(base.getTime())) return new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -46,6 +58,54 @@ function nextRunAt(frequency: z.infer<typeof frequencySchema>, runAt?: string) {
   return next.toISOString();
 }
 
+function frequencyToCron(frequency: z.infer<typeof frequencySchema>, runAt?: string) {
+  const date = new Date(nextRunAt(frequency, runAt));
+  const minute = date.getMinutes();
+  const hour = date.getHours();
+  const dayOfMonth = date.getDate();
+  const month = date.getMonth() + 1;
+  const dayOfWeek = date.getDay();
+
+  if (frequency === "hourly") return `${minute} * * * *`;
+  if (frequency === "daily") return `${minute} ${hour} * * *`;
+  if (frequency === "weekly") return `${minute} ${hour} * * ${dayOfWeek}`;
+  return `${minute} ${hour} ${dayOfMonth} ${month} *`;
+}
+
+function cronToFrequency(cron?: string): z.infer<typeof frequencySchema> {
+  if (!cron) return "daily";
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return "daily";
+  if (parts[1] === "*" && parts[2] === "*" && parts[3] === "*" && parts[4] === "*") return "hourly";
+  if (parts[2] === "*" && parts[3] === "*" && parts[4] === "*") return "daily";
+  if (parts[2] === "*" && parts[3] === "*" && parts[4] !== "*") return "weekly";
+  return "once";
+}
+
+function inferTarget(prompt: string): z.infer<typeof targetSchema> {
+  const value = prompt.toLowerCase();
+  if (value.includes("code") || value.includes("bug") || value.includes("build") || value.includes("project")) return "code";
+  if (value.includes("research") || value.includes("news") || value.includes("search") || value.includes("brief")) return "research";
+  return "chat";
+}
+
+function normalizeTask(row: unknown) {
+  const task = row as Partial<ScheduledTaskRow>;
+  const prompt = task.prompt ?? "";
+  return {
+    id: task.id,
+    title: task.name ?? "Scheduled task",
+    prompt,
+    frequency: cronToFrequency(task.cronExpression),
+    target: inferTarget(prompt),
+    model: "opus",
+    status: task.isActive === false ? "paused" : "active",
+    nextRunAt: task.nextRun ?? undefined,
+    lastRunAt: task.lastRun ?? undefined,
+    createdAt: task.createdAt,
+  };
+}
+
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
@@ -56,7 +116,7 @@ export async function GET() {
       sort: { createdAt: -1 },
       limit: 100,
     })) as { documents: unknown[] };
-    return Response.json({ tasks: result.documents ?? [] });
+    return Response.json({ tasks: (result.documents ?? []).map(normalizeTask) });
   } catch (err) {
     console.error("[scheduled-tasks] GET failed:", err);
     return Response.json({ tasks: [], error: "Failed to load scheduled tasks" });
@@ -74,21 +134,16 @@ export async function POST(req: Request) {
   const task = {
     id: crypto.randomUUID(),
     userId: session.user.id,
-    title: body.title,
+    name: body.title,
     prompt: body.prompt,
-    frequency: body.frequency,
-    target: body.target,
-    model: body.model,
-    status: "active",
-    nextRunAt: nextRunAt(body.frequency, body.runAt),
-    lastRunAt: null,
+    cronExpression: frequencyToCron(body.frequency, body.runAt),
+    nextRun: nextRunAt(body.frequency, body.runAt),
     createdAt: now,
-    updatedAt: now,
   };
 
   try {
-    await db.scheduledTasks("insertOne", { document: task });
-    return Response.json({ task }, { status: 201 });
+    const result = (await db.scheduledTasks("insertOne", { document: task })) as { document: unknown };
+    return Response.json({ task: normalizeTask(result.document) }, { status: 201 });
   } catch (err) {
     console.error("[scheduled-tasks] POST failed:", err);
     const msg = err instanceof Error ? err.message : "save failed";
@@ -103,18 +158,19 @@ export async function PATCH(req: Request) {
   const body = await parseJson(req, updateTaskSchema);
   if (isResponse(body)) return body;
 
-  const { id, ...patch } = body;
-  const update = {
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  };
+  const update: Record<string, unknown> = {};
+  if (body.status) update.isActive = body.status === "active";
+  if (body.title) update.name = body.title;
+  if (body.prompt) update.prompt = body.prompt;
+  if (body.frequency) update.cronExpression = frequencyToCron(body.frequency, body.nextRunAt);
+  if (body.nextRunAt) update.nextRun = nextRunAt(body.frequency ?? "daily", body.nextRunAt);
 
   try {
     const result = (await db.scheduledTasks("updateOne", {
-      filter: { id, userId: session.user.id },
+      filter: { id: body.id, userId: session.user.id },
       update: { $set: update },
     })) as { document: unknown };
-    return Response.json({ task: result.document });
+    return Response.json({ task: normalizeTask(result.document) });
   } catch (err) {
     console.error("[scheduled-tasks] PATCH failed:", err);
     return Response.json({ error: "update failed" }, { status: 500 });

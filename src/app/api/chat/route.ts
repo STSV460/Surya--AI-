@@ -22,7 +22,7 @@ const chatRequestSchema = z.object({
   editMessageId: z.string().trim().min(1).max(160).optional(),
   thinking: z.boolean().optional().default(false),
   enableConnectors: z.boolean().optional().default(false),
-  enableWebSearch: z.boolean().optional().default(false),
+  enableWebSearch: z.boolean().optional().default(true),
   enableImageGen: z.boolean().optional().default(false),
   enableVideoGen: z.boolean().optional().default(false),
 });
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
 
   const body = await parseJson(req, chatRequestSchema);
   if (isResponse(body)) return body;
-  const { message, editMessageId, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = false, enableImageGen = false, enableVideoGen = false } = body;
+  const { message, editMessageId, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = true, enableImageGen = false, enableVideoGen = false } = body;
 
   const userEmail = session.user.email ?? "";
 
@@ -474,9 +474,9 @@ Use this information to personalize responses. Address them by name when natural
 
 Today is **${today}**. Be honest if a question requires information past your training cutoff — say so and suggest the user enable Web Search.`;
 
-  const basePrompt = `You are Jarvis, the assistant inside Surya AI — the AI that thinks with you.${webSearchNote}
+  const basePrompt = `You are Surya AI — the AI that thinks with the user.${webSearchNote}
 
-If the user asks your name, say you are Jarvis. Surya AI is the product/company you help operate.
+If the user asks your name, say you are Surya AI.
 
 ## About Your Creator
 You were created by **PVS Hariharan**, founder of Surya AI. If a user asks who built you, you may say "I was built by PVS Hariharan, the founder of Surya AI." For casual mentions you may also share the public portfolio link: https://my-portfolio-eight-green-8alg1lpo77.vercel.app/
@@ -611,6 +611,9 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
               } catch {
                 toolInput = {};
               }
+              if (tc.name === "web_search" && typeof toolInput.query !== "string") {
+                toolInput.query = message;
+              }
 
               // Stream tool_call event for UI
               send(controller, {
@@ -634,10 +637,6 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
                   const parsed = JSON.parse(result);
                   if (parsed.results?.length) {
                     send(controller, { type: "search_results", searchResults: parsed.results });
-                  } else if (parsed.error) {
-                    const notice = `Web search failed: ${parsed.error}`;
-                    fullContent += `${notice}\n\n`;
-                    send(controller, { type: "text", content: `${notice}\n\n` });
                   }
                 } catch { /* ignore parse errors */ }
                 // Keep using the same model for synthesis (Gemini streaming is incompatible)

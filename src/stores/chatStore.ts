@@ -48,7 +48,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   streamingContent: "",
   thinkingEnabled: true,
   enableConnectors: false,
-  enableWebSearch: false,
+  enableWebSearch: true,
   enableImageGen: false,
   enableVideoGen: false,
   enableCrew: false,

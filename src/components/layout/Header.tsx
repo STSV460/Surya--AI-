@@ -1,80 +1,26 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import { PanelLeft, ChevronDown, Sun } from "lucide-react";
-import { useUIStore, type ModelId } from "@/stores/uiStore";
+import { PanelLeft, Sun, Bug } from "lucide-react";
+import { useUIStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { usePathname } from "next/navigation";
 
-const MODELS: { id: ModelId; label: string; badge: string; color: string }[] = [
-  { id: "sonnet", label: "Sonnet 4.6", badge: "Fast",  color: "#4FC3F7" },
-  { id: "opus",   label: "Opus 4.6",   badge: "Smart", color: "#A855F7" },
-];
-
-function ModelSelector() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const { selectedModel, setSelectedModel } = useUIStore();
-  const setThinkingEnabled = useChatStore((s) => s.setThinkingEnabled);
-
-  const model = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  function handleSelect(id: ModelId) {
-    setSelectedModel(id);
-    setThinkingEnabled(id === "opus");
-    setOpen(false);
-  }
+function ReportBugButton() {
+  const href = `mailto:pvshariharan324@gmail.com?subject=${encodeURIComponent(
+    "Surya AI bug report"
+  )}&body=${encodeURIComponent(
+    "Hi PVS,\n\nI found an issue in Surya AI.\n\nWhere it happened:\n\nWhat went wrong:\n\nSteps to reproduce:\n1. \n2. \n3. \n\nScreenshot or extra details:\n"
+  )}`;
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-white/[0.04] hover:bg-surface-2 border border-white/8 transition-all duration-150"
-      >
-        <span
-          className="w-2 h-2 rounded-full shrink-0"
-          style={{ background: model.color }}
-        />
-        {model.label}
-        <ChevronDown size={11} className="opacity-60 ml-0.5" />
-      </button>
-
-      {open && (
-        <div className="absolute top-full right-0 mt-1.5 z-50 bg-surface-2 border border-white/12 rounded-xl p-1.5 min-w-[180px] shadow-[0_12px_40px_rgba(0,0,0,0.5)]">
-          {MODELS.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => handleSelect(m.id)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all duration-100 ${
-                selectedModel === m.id
-                  ? "bg-surya-500/12 text-white"
-                  : "text-gray-400 hover:bg-white/6 hover:text-white"
-              }`}
-            >
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ background: m.color }}
-              />
-              <span className="flex-1 text-left font-medium">{m.label}</span>
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                style={{ background: `${m.color}22`, color: m.color }}
-              >
-                {m.badge}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <a
+      href={href}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-white/[0.04] hover:bg-surface-2 border border-white/8 transition-all duration-150"
+      title="Report a bug"
+    >
+      <Bug size={13} className="text-surya-400" />
+      Report Bug
+    </a>
   );
 }
 
@@ -105,7 +51,7 @@ export function Header() {
         </span>
       </div>
 
-      {isChatRoute && <ModelSelector />}
+      {isChatRoute && <ReportBugButton />}
     </header>
   );
 }
