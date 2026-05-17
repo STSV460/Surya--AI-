@@ -2,8 +2,6 @@
 import { auth } from "@/auth";
 import * as cheerio from "cheerio";
 import { safeFetch, normalizeSearchResults } from "@/lib/web-utils";
-import { connectorLimiter } from "@/lib/rate-limit";
-import { aiClient } from "@/lib/ai/client";
 import { parseJson, isResponse } from "@/lib/validation";
 import { z } from "zod";
 
@@ -80,110 +78,64 @@ async function searchWithFirecrawl(query: string, cap: number): Promise<SearchPr
   };
 }
 
-async function searchWithInsForge(query: string, cap: number): Promise<SearchProviderResult> {
-  const model = process.env.WEB_SEARCH_MODEL ?? "moonshotai/kimi-k2.5";
-  const response = (await aiClient.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: "user",
-        content: `Find the newest authoritative web sources for: ${query}
-
-Return up to ${cap} relevant results. For latest, current, today, or news queries, prioritize recent dated pages, official sources, and reputable reporting. Prefer sources that expose publication dates.`,
-      },
-    ],
-    webSearch: { enabled: true, maxResults: cap },
-  })) as {
-    choices?: Array<{
-      message?: {
-        annotations?: Array<{
-          urlCitation?: { url?: string; title?: string; content?: string };
-          url_citation?: { url?: string; title?: string; content?: string };
-        }>;
-      };
-    }>;
-  };
-
-  const annotations = response.choices?.[0]?.message?.annotations ?? [];
-  const results: RawSearchResult[] = [];
-  for (const annotation of annotations) {
-    const citation = annotation.urlCitation ?? annotation.url_citation;
-    if (!citation?.url) continue;
-    results.push({
-      title: citation.title ?? citation.url,
-      url: citation.url,
-      snippet: citation.content ?? "",
-    });
-    if (results.length >= cap) break;
-  }
-
-  return { provider: "insforge", results };
-}
-
-async function searchWithBrave(query: string, cap: number): Promise<SearchProviderResult> {
-  const key = process.env.BRAVE_SEARCH_API_KEY;
-  if (!key) return { provider: "brave", results: [] };
-
-  const params = new URLSearchParams({
-    q: query,
-    count: String(cap),
-    text_decorations: "false",
-    search_lang: "en",
-  });
-  const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-    headers: {
-      Accept: "application/json",
-      "X-Subscription-Token": key,
-    },
-  });
-  if (!res.ok) throw new Error(`Brave ${res.status}: ${await res.text()}`);
-
-  const data = (await res.json()) as {
-    web?: {
-      results?: Array<{
-        title?: string;
-        url?: string;
-        description?: string;
-      }>;
-    };
-  };
-  return {
-    provider: "brave",
-    results: (data.web?.results ?? [])
-      .filter((item) => item.url)
-      .map((item) => ({
-        title: item.title ?? item.url ?? "",
-        url: item.url ?? "",
-        snippet: item.description ?? "",
-      }))
-      .slice(0, cap),
-  };
-}
-
 async function searchWithDuckDuckGo(query: string, cap: number): Promise<SearchProviderResult> {
   const params = new URLSearchParams({ q: query });
-  const res = await safeFetch(`https://lite.duckduckgo.com/lite/?${params}`, {
-    headers: { "User-Agent": "SuryaAI-Search/1.0" },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`);
+  const endpoints = [
+    `https://duckduckgo.com/html/?${params}`,
+    `https://lite.duckduckgo.com/lite/?${params}`,
+  ];
 
-  const html = await res.text();
-  const $ = cheerio.load(html);
   const results: RawSearchResult[] = [];
+  const errors: string[] = [];
 
-  $("a.result-link, a[href*='uddg=']").each((_, element) => {
-    if (results.length >= cap) return false;
-    const title = $(element).text().replace(/\s+/g, " ").trim();
-    const href = $(element).attr("href") ?? "";
-    const url = extractDuckDuckGoUrl(href);
-    if (!title || !url) return;
-    const row = $(element).closest("tr");
-    const snippet =
-      row.nextAll("tr").find(".result-snippet").first().text().replace(/\s+/g, " ").trim() ||
-      row.next("tr").text().replace(/\s+/g, " ").trim();
-    results.push({ title, url, snippet });
-  });
+  for (const endpoint of endpoints) {
+    try {
+      const res = await safeFetch(endpoint, {
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "Accept-Language": "en-US,en;q=0.9",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`);
+
+      const html = await res.text();
+      const $ = cheerio.load(html);
+
+      $(".result").each((_, element) => {
+        if (results.length >= cap) return false;
+        const link = $(element).find("a.result__a").first();
+        const title = link.text().replace(/\s+/g, " ").trim();
+        const url = extractDuckDuckGoUrl(link.attr("href") ?? "");
+        const snippet = $(element).find(".result__snippet").text().replace(/\s+/g, " ").trim();
+        if (title && url && !results.some((item) => item.url === url)) {
+          results.push({ title, url, snippet });
+        }
+      });
+
+      $("a.result-link, a[href*='uddg=']").each((_, element) => {
+        if (results.length >= cap) return false;
+        const title = $(element).text().replace(/\s+/g, " ").trim();
+        const url = extractDuckDuckGoUrl($(element).attr("href") ?? "");
+        if (!title || !url || results.some((item) => item.url === url)) return;
+        const row = $(element).closest("tr");
+        const snippet =
+          row.nextAll("tr").find(".result-snippet").first().text().replace(/\s+/g, " ").trim() ||
+          row.next("tr").text().replace(/\s+/g, " ").trim();
+        results.push({ title, url, snippet });
+      });
+
+      if (results.length > 0) break;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : "DuckDuckGo failed");
+    }
+  }
+
+  if (results.length === 0 && errors.length > 0) {
+    throw new Error(errors.join("; "));
+  }
 
   return { provider: "duckduckgo", results };
 }
@@ -203,10 +155,8 @@ function extractDuckDuckGoUrl(href: string) {
 async function runSearch(query: string, cap: number) {
   const errors: string[] = [];
   const providers = [
-    () => searchWithFirecrawl(query, cap),
-    () => searchWithInsForge(query, cap),
-    () => searchWithBrave(query, cap),
     () => searchWithDuckDuckGo(query, cap),
+    () => searchWithFirecrawl(query, cap),
   ];
 
   for (const provider of providers) {
@@ -227,15 +177,6 @@ export async function POST(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // Rate limiting
-  const { success } = await connectorLimiter.check((session.user as { id: string }).id || session.user.email || "anon");
-  if (!success) {
-    return Response.json(
-      { error: "Too many requests. Please slow down." },
-      { status: 429, headers: { "Retry-After": "60" } }
-    );
-  }
-
   const body = await parseJson(req, searchBodySchema);
   if (isResponse(body)) return body;
   const { action } = body;
@@ -250,14 +191,11 @@ export async function POST(req: Request) {
           results: normalizeSearchResults(result.results, cap),
         });
       }
-      return Response.json(
-        {
-          error: "Web search is unavailable right now. Please try again later.",
-          code: "SEARCH_UNAVAILABLE",
-          details: "errors" in result ? result.errors : [],
-        },
-        { status: 503 }
-      );
+      return Response.json({
+        provider: "none",
+        results: [],
+        details: "errors" in result ? result.errors : [],
+      });
     }
 
     if (action === "scrape") {
