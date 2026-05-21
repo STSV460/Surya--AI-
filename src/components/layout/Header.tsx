@@ -1,6 +1,7 @@
 "use client";
 
-import { PanelLeft, Sun, Bug } from "lucide-react";
+import { PanelLeft, Bug } from "lucide-react";
+import Image from "next/image";
 import { useUIStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { usePathname } from "next/navigation";
@@ -44,7 +45,7 @@ export function Header() {
 
       <div className="flex-1 flex items-center gap-2 min-w-0">
         {!activeTitle && (
-          <Sun size={18} className="text-surya-500 shrink-0" />
+          <Image src="/logo.png" alt="Surya AI" width={20} height={20} className="rounded-[5px] shrink-0" />
         )}
         <span className="text-[13.5px] font-medium text-gray-300 truncate">
           {activeTitle ?? "Surya AI"}
