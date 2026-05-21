@@ -7,6 +7,7 @@ const BASE = "https://api.sarvam.ai";
 const MODEL = process.env.SARVAM_MODEL ?? "bulbul:v2";
 
 const LANG_MAP: Record<string, string> = {
+  en: "en-IN",
   hi: "hi-IN", ta: "ta-IN", te: "te-IN", kn: "kn-IN", ml: "ml-IN",
   mr: "mr-IN", bn: "bn-IN", gu: "gu-IN", pa: "pa-IN", or: "od-IN", as: "as-IN",
 };
@@ -18,7 +19,7 @@ export async function synthesizeSarvam(
 ): Promise<{ blob: Blob }> {
   if (!KEY) throw new Error("SARVAM_API_KEY not set");
   const code = language.toLowerCase().slice(0, 2);
-  const targetLang = LANG_MAP[code] ?? "hi-IN";
+  const targetLang = LANG_MAP[code] ?? "en-IN";
 
   const res = await fetch(`${BASE}/text-to-speech`, {
     method: "POST",

@@ -342,7 +342,10 @@ export const MessageBubble = memo(function MessageBubble({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: text.slice(0, 5000),
+          // Cap at 2000 chars — stays under free-tier ElevenLabs quota and
+          // keeps single-request latency reasonable. Longer assistant
+          // messages will be truncated for speech only.
+          text: text.slice(0, 2000),
           language: detectSpeechLanguage(text),
         }),
         signal: controller.signal,
@@ -350,13 +353,19 @@ export const MessageBubble = memo(function MessageBubble({
       window.clearTimeout(timeoutId);
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? `TTS failed: ${res.status}`);
+        const err = new Error(data?.error ?? `TTS failed: ${res.status}`) as Error & { code?: string; status?: number };
+        err.code = data?.code;
+        err.status = res.status;
+        throw err;
       }
       return await res.blob();
     } catch (err) {
       window.clearTimeout(timeoutId);
-      // Retry once on transient network/timeout errors
-      if (attempt === 1) {
+      const status = (err as { status?: number })?.status;
+      const code = (err as { code?: string })?.code;
+      // Do not retry on definitive failures (quota, auth, validation)
+      const isPermanent = status === 401 || status === 403 || status === 429 || code === "quota_exceeded";
+      if (attempt === 1 && !isPermanent) {
         await new Promise((r) => window.setTimeout(r, 400));
         return fetchTtsBlob(text, 2);
       }
@@ -410,13 +419,14 @@ export const MessageBubble = memo(function MessageBubble({
       stopAudioPlayback();
       setSpeaking(false);
       const raw = err instanceof Error ? err.message : "";
+      const code = (err as { code?: string })?.code;
+      const status = (err as { status?: number })?.status;
       console.warn("[read-aloud] TTS failed:", raw);
-      // Show concise, user-friendly error. No browser speech synth fallback —
-      // it produces low-quality voices and triggers "blocked" errors when the
-      // user-gesture context has expired after async API calls.
-      if (raw.includes("aborted") || raw.includes("AbortError")) {
+      if (code === "quota_exceeded" || status === 429 || /quota|credits remaining|rate_limit/i.test(raw)) {
+        setDocError("Voice quota reached for today. Try again tomorrow.");
+      } else if (raw.includes("aborted") || raw.includes("AbortError")) {
         setDocError("Voice timed out. Try again.");
-      } else if (raw.includes("401") || raw.includes("Unauthorized")) {
+      } else if (status === 401 || status === 403) {
         setDocError("Sign in to use voice.");
       } else {
         setDocError("Voice unavailable. Try again in a moment.");
