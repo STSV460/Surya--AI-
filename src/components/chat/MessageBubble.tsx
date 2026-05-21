@@ -334,21 +334,38 @@ export const MessageBubble = memo(function MessageBubble({
     return "en";
   }
 
-  async function playTtsAudio(text: string) {
-    const res = await fetch("/api/chat/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: text.slice(0, 5000),
-        language: detectSpeechLanguage(text),
-      }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new Error(data?.error ?? `TTS failed: ${res.status}`);
+  async function fetchTtsBlob(text: string, attempt = 1): Promise<Blob> {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      const res = await fetch("/api/chat/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text.slice(0, 5000),
+          language: detectSpeechLanguage(text),
+        }),
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeoutId);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `TTS failed: ${res.status}`);
+      }
+      return await res.blob();
+    } catch (err) {
+      window.clearTimeout(timeoutId);
+      // Retry once on transient network/timeout errors
+      if (attempt === 1) {
+        await new Promise((r) => window.setTimeout(r, 400));
+        return fetchTtsBlob(text, 2);
+      }
+      throw err;
     }
+  }
 
-    const blob = await res.blob();
+  async function playTtsAudio(text: string) {
+    const blob = await fetchTtsBlob(text);
     const url = URL.createObjectURL(blob);
     audioUrlRef.current = url;
     const audio = new Audio(url);
@@ -363,7 +380,7 @@ export const MessageBubble = memo(function MessageBubble({
     audio.onerror = () => {
       stopAudioPlayback();
       setSpeaking(false);
-      setDocError("Audio playback failed.");
+      setDocError("Audio playback failed. Try again.");
     };
     await audio.play();
     await waitForAudioStart(audio);
@@ -391,27 +408,19 @@ export const MessageBubble = memo(function MessageBubble({
       await playTtsAudio(text);
     } catch (err) {
       stopAudioPlayback();
-      console.warn("[read-aloud] TTS fallback:", err);
-      if (!("speechSynthesis" in window)) {
-        setSpeaking(false);
-        setDocError("Audio unavailable. Check browser sound permission and system volume.");
-        return;
+      setSpeaking(false);
+      const raw = err instanceof Error ? err.message : "";
+      console.warn("[read-aloud] TTS failed:", raw);
+      // Show concise, user-friendly error. No browser speech synth fallback —
+      // it produces low-quality voices and triggers "blocked" errors when the
+      // user-gesture context has expired after async API calls.
+      if (raw.includes("aborted") || raw.includes("AbortError")) {
+        setDocError("Voice timed out. Try again.");
+      } else if (raw.includes("401") || raw.includes("Unauthorized")) {
+        setDocError("Sign in to use voice.");
+      } else {
+        setDocError("Voice unavailable. Try again in a moment.");
       }
-      const voices = await waitForVoices();
-      const cancel = speakWithBetterVoice(
-        text,
-        voices,
-        () => {
-          cancelSpeechRef.current = null;
-          setSpeaking(false);
-        },
-        (message) => {
-          cancelSpeechRef.current = null;
-          setSpeaking(false);
-          setDocError(message);
-        }
-      );
-      cancelSpeechRef.current = cancel ?? null;
     }
   }
 
