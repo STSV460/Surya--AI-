@@ -350,18 +350,21 @@ ${sourcesBlock || "No readable source text was found. Use the search result list
 ${citationMap || "No sources found."}`;
 
         const firstRound: Array<(typeof councilMembers)[number] & { content: string }> = [];
-        for (const member of councilMembers) {
+
+        // Run all council members in parallel — sequential loop was hitting
+        // total timeout when stacked (4 models × 30-90s each).
+        const memoResults = await Promise.allSettled(
+          councilMembers.map(async (member) => {
             sendCouncilUpdate(member, "reading", "thinking");
             sendCouncilUpdate(member, "memo", "thinking");
 
-            try {
-              const content = await councilCompletion({
-                model: member.model,
-                maxTokens: 1200,
-                system: `You are ${member.name}, one member of Surya AI's Deep Research Model Council. Your lens: ${member.lens}.
+            const content = await councilCompletion({
+              model: member.model,
+              maxTokens: 1200,
+              system: `You are ${member.name}, one member of Surya AI's Deep Research Model Council. Your lens: ${member.lens}.
 
 Use only the provided web sources. Cite source numbers like [1], [2]. Do not invent facts. Identify uncertainty and missing evidence.`,
-                user: `${sourcePayload}
+              user: `${sourcePayload}
 
               Write your independent council memo:
 - direct answer
@@ -369,27 +372,36 @@ Use only the provided web sources. Cite source numbers like [1], [2]. Do not inv
 - weak or missing evidence
 - risks / caveats
 - preliminary conclusion`,
-              });
+            });
 
-              if (!content.trim()) {
-                const fallback = `${member.name.replace(" Council Member", "")} returned no answer from the gateway. It will be excluded from the final council synthesis.`;
-                sendCouncilUpdate(member, "memo", "error", fallback);
-                continue;
-              }
+            return { member, content };
+          })
+        );
 
-              sendCouncilUpdate(member, "memo", "done", content);
-              firstRound.push({ ...member, content });
-            } catch (err) {
-              const rawMessage = err instanceof Error ? err.message : "";
-              const cleanMessage = rawMessage.includes("Unexpected token '<'")
-                ? "Gemini gateway returned an HTML error page instead of JSON. Check that the selected Gemini text model is enabled in InsForge."
-                : rawMessage;
-              const message =
-                cleanMessage
-                  ? `${member.name.replace(" Council Member", "")} failed: ${cleanMessage}`
-                  : `${member.name.replace(" Council Member", "")} failed.`;
-              sendCouncilUpdate(member, "memo", "error", message);
+        for (let i = 0; i < memoResults.length; i++) {
+          const result = memoResults[i];
+          const member = councilMembers[i];
+          if (result.status === "fulfilled") {
+            const { content } = result.value;
+            if (!content.trim()) {
+              const fallback = `${member.name.replace(" Council Member", "")} returned no answer from the gateway. It will be excluded from the final council synthesis.`;
+              sendCouncilUpdate(member, "memo", "error", fallback);
+              continue;
             }
+            sendCouncilUpdate(member, "memo", "done", content);
+            firstRound.push({ ...member, content });
+          } else {
+            const err = result.reason;
+            const rawMessage = err instanceof Error ? err.message : "";
+            const cleanMessage = rawMessage.includes("Unexpected token '<'")
+              ? "Gemini gateway returned an HTML error page instead of JSON. Check that the selected Gemini text model is enabled in InsForge."
+              : rawMessage;
+            const message =
+              cleanMessage
+                ? `${member.name.replace(" Council Member", "")} failed: ${cleanMessage}`
+                : `${member.name.replace(" Council Member", "")} failed.`;
+            sendCouncilUpdate(member, "memo", "error", message);
+          }
         }
 
         const firstRoundBlock = firstRound

@@ -46,14 +46,17 @@ export function createInsforgeAuthClient() {
     baseUrl: INSFORGE_BASE_URL,
     anonKey: INSFORGE_ANON_KEY,
     isServerMode: true,
+    timeout: 120_000,
   });
 }
 
 // Server-side client — uses admin API key for Authorization (bypasses RLS)
+// timeout 120s: Opus/Sonnet/Gemini regularly need >30s for council memos.
 export const insforge = createClient({
   baseUrl: INSFORGE_BASE_URL,
   anonKey: INSFORGE_ANON_KEY,
   isServerMode: true,
+  timeout: 120_000,
 });
 
 // Set the API key as the auth token so the SDK sends
