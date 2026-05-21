@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -55,6 +55,203 @@ function CopyCodeButton({ code }: { code: string }) {
   );
 }
 
+function pickPreferredVoice(voices: SpeechSynthesisVoice[]) {
+  const normalized = (value: string) => value.toLowerCase();
+  const englishVoices = voices.filter((voice) => normalized(voice.lang).startsWith("en"));
+  const candidates = englishVoices.length > 0 ? englishVoices : voices;
+  const badVoicePattern =
+    /whisper|novelty|bells|boing|bubbles|cellos|deranged|hysterical|pipe|princess|trinoids|zarvox|bahh|organ|good news|bad news|jester|superstar|albert|fred|junior|ralph|reed|rocko|shelley|sandy|grandma|grandpa|flo|eddy/i;
+  const preferredNames = [
+    "samantha",
+    "ava",
+    "allison",
+    "victoria",
+    "karen",
+    "moira",
+    "tessa",
+    "veena",
+    "rishi",
+    "google us english",
+    "google uk english female",
+    "microsoft aria",
+    "microsoft jenny",
+    "microsoft emma",
+    "microsoft guy",
+    "daniel",
+  ];
+
+  const cleanCandidates = candidates.filter((voice) => !badVoicePattern.test(voice.name));
+  const scored = cleanCandidates.map((voice) => {
+    const name = normalized(voice.name);
+    const lang = normalized(voice.lang);
+    let score = 0;
+
+    const preferredIndex = preferredNames.findIndex((preferred) => name.includes(preferred));
+    if (preferredIndex >= 0) score += 100 - preferredIndex;
+    if (lang === "en-us") score += 20;
+    if (lang === "en-in") score += 18;
+    if (lang === "en-gb") score += 16;
+    if (lang.startsWith("en-")) score += 10;
+    if (/natural|premium|enhanced|neural|google|microsoft|samantha|ava|allison|joanna|aria|jenny|emma|olivia|daniel|karen|victoria|moira|tessa|veena/i.test(voice.name)) {
+      score += 30;
+    }
+    if (/female|woman|samantha|ava|allison|joanna|aria|jenny|emma|olivia|karen|victoria|moira|tessa|veena/i.test(name)) score += 8;
+    if (!voice.localService) score += 4;
+
+    return { voice, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.voice ?? cleanCandidates[0] ?? candidates[0] ?? null;
+}
+
+let activeSpeechId = 0;
+
+function stopSpeech() {
+  activeSpeechId += 1;
+  window.speechSynthesis.onvoiceschanged = null;
+  window.speechSynthesis.cancel();
+  // Chrome can leave an utterance queued after rapid toggles. Second cancel
+  // clears that queue without changing user-visible behavior.
+  window.setTimeout(() => window.speechSynthesis.cancel(), 0);
+}
+
+function splitSpeechText(text: string) {
+  const sentences = text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) ?? [text];
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    const next = `${current} ${sentence}`.trim();
+    if (next.length > 900 && current) {
+      chunks.push(current);
+      current = sentence.trim();
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks.length > 0 ? chunks : [text];
+}
+
+function waitForVoices() {
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) return Promise.resolve(voices);
+
+  return new Promise<SpeechSynthesisVoice[]>((resolve) => {
+    const timer = window.setTimeout(() => {
+      window.speechSynthesis.onvoiceschanged = null;
+      resolve(window.speechSynthesis.getVoices());
+    }, 800);
+
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.clearTimeout(timer);
+      window.speechSynthesis.onvoiceschanged = null;
+      resolve(window.speechSynthesis.getVoices());
+    };
+  });
+}
+
+function speakWithBetterVoice(text: string, voices: SpeechSynthesisVoice[], onDone: () => void, onError: (message: string) => void) {
+  stopSpeech();
+  const speechId = activeSpeechId;
+  const voice = pickPreferredVoice(voices);
+  const chunks = splitSpeechText(text);
+  let index = 0;
+  let started = false;
+  const resumeTimer = window.setInterval(() => {
+    if (speechId !== activeSpeechId || !window.speechSynthesis.speaking) {
+      window.clearInterval(resumeTimer);
+      return;
+    }
+    window.speechSynthesis.resume();
+  }, 350);
+
+  const speakNext = () => {
+    if (speechId !== activeSpeechId) {
+      window.clearInterval(resumeTimer);
+      return;
+    }
+
+    const chunk = chunks[index];
+    if (!chunk) {
+      window.clearInterval(resumeTimer);
+      onDone();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(chunk);
+    if (voice) utterance.voice = voice;
+    utterance.lang = voice?.lang ?? "en-US";
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onstart = () => {
+      started = true;
+    };
+    utterance.onend = () => {
+      index += 1;
+      speakNext();
+    };
+    utterance.onerror = (event) => {
+      window.clearInterval(resumeTimer);
+      if (speechId === activeSpeechId) {
+        const reason = event.error ? `Speech failed: ${event.error}` : "Speech failed.";
+        onError(started ? reason : "Speech was blocked by the browser. Try clicking the button again.");
+        onDone();
+      }
+    };
+
+    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.resume();
+  };
+
+  speakNext();
+  return () => {
+    window.clearInterval(resumeTimer);
+    if (speechId === activeSpeechId) stopSpeech();
+  };
+}
+
+function waitForAudioStart(audio: HTMLAudioElement) {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      audio.removeEventListener("playing", onPlaying);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      window.clearTimeout(timer);
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Audio playback failed."));
+    };
+    const onPlaying = () => finish();
+    const onCanPlay = () => { if (!audio.paused) finish(); };
+    const onEnded = () => finish(); // short audio that ends before timeout = success
+    const onError = () => fail();
+    const timer = window.setTimeout(() => {
+      if (audio.ended || !audio.paused) finish();
+      else fail();
+    }, 2500);
+
+    audio.addEventListener("playing", onPlaying);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+  });
+}
+
 const ArtifactChip = memo(function ArtifactChip({ artifact }: { artifact: ArtifactType }) {
   const { setArtifactPanel } = useUIStore();
   const Icon = ARTIFACT_ICONS[artifact.type];
@@ -96,12 +293,23 @@ export const MessageBubble = memo(function MessageBubble({
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const cancelSpeechRef = useRef<(() => void) | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const [docStatus, setDocStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [docError, setDocError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const isUser = message.role === "user";
   const displayContent = isStreaming ? streamingContent : message.content;
+
+  useEffect(() => {
+    return () => {
+      cancelSpeechRef.current?.();
+      cancelSpeechRef.current = null;
+      stopAudioPlayback();
+    };
+  }, []);
 
   function copyMessage() {
     navigator.clipboard.writeText(displayContent).then(() => {
@@ -110,22 +318,101 @@ export const MessageBubble = memo(function MessageBubble({
     });
   }
 
-  function speakMessage() {
-    if (!("speechSynthesis" in window)) {
-      setDocError("Speech is not supported in this browser.");
-      return;
+  function stopAudioPlayback() {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
     }
+  }
+
+  function detectSpeechLanguage(text: string) {
+    if (/[\u0C00-\u0C7F]/.test(text)) return "te";
+    if (/[\u0900-\u097F]/.test(text)) return "hi";
+    if (/[\u0B80-\u0BFF]/.test(text)) return "ta";
+    return "en";
+  }
+
+  async function playTtsAudio(text: string) {
+    const res = await fetch("/api/chat/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: text.slice(0, 5000),
+        language: detectSpeechLanguage(text),
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? `TTS failed: ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    audioUrlRef.current = url;
+    const audio = new Audio(url);
+    audio.muted = false;
+    audio.volume = 1;
+    audio.preload = "auto";
+    audioRef.current = audio;
+    audio.onended = () => {
+      stopAudioPlayback();
+      setSpeaking(false);
+    };
+    audio.onerror = () => {
+      stopAudioPlayback();
+      setSpeaking(false);
+      setDocError("Audio playback failed.");
+    };
+    await audio.play();
+    await waitForAudioStart(audio);
+  }
+
+  async function speakMessage() {
     if (speaking) {
-      window.speechSynthesis.cancel();
+      stopAudioPlayback();
+      cancelSpeechRef.current?.();
+      cancelSpeechRef.current = null;
+      stopSpeech();
       setSpeaking(false);
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(toPlainText(displayContent));
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    const text = toPlainText(displayContent);
+    if (!text) {
+      setDocError("Nothing to read aloud.");
+      return;
+    }
+
     setSpeaking(true);
+    setDocError(null);
+
+    try {
+      await playTtsAudio(text);
+    } catch (err) {
+      stopAudioPlayback();
+      console.warn("[read-aloud] TTS fallback:", err);
+      if (!("speechSynthesis" in window)) {
+        setSpeaking(false);
+        setDocError("Audio unavailable. Check browser sound permission and system volume.");
+        return;
+      }
+      const voices = await waitForVoices();
+      const cancel = speakWithBetterVoice(
+        text,
+        voices,
+        () => {
+          cancelSpeechRef.current = null;
+          setSpeaking(false);
+        },
+        (message) => {
+          cancelSpeechRef.current = null;
+          setSpeaking(false);
+          setDocError(message);
+        }
+      );
+      cancelSpeechRef.current = cancel ?? null;
+    }
   }
 
   async function sendToGoogleDocs() {
@@ -334,11 +621,11 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {/* Powered by Gemini badge — shown for research document artifacts */}
+        {/* Powered by Surya AI badge — shown for research document artifacts */}
         {!isUser && message.artifacts?.some(a => a.type === "document" && a.title.startsWith("Research:")) && (
           <div className="flex items-center gap-1.5 mt-2">
             <Sparkles size={10} className="text-surya-accent" />
-            <span className="text-[10px] text-surya-accent font-medium tracking-wide">Powered by Gemini</span>
+            <span className="text-[10px] text-surya-accent font-medium tracking-wide">Powered by Surya AI</span>
           </div>
         )}
 
@@ -440,6 +727,7 @@ function toPlainText(value: string) {
     .replace(/```[\s\S]*?```/g, " code block omitted ")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/gu, "")
     .replace(/[#>*_~|]/g, "")
     .replace(/\s+/g, " ")
     .trim();
