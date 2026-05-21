@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { db } from "@/lib/insforge";
+import { db, insforgeDb } from "@/lib/insforge";
 import { parseJson, isResponse } from "@/lib/validation";
 import { z } from "zod";
 
@@ -7,6 +7,16 @@ const renameSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
 });
 
+async function resolveUserId(sessionUser: { id?: string | null; email?: string | null }) {
+  if (sessionUser.id) return sessionUser.id;
+  if (!sessionUser.email) return "";
+  const { data } = await insforgeDb
+    .from("profiles")
+    .select("id")
+    .eq("email", sessionUser.email)
+    .maybeSingle();
+  return typeof data?.id === "string" ? data.id : "";
+}
 
 async function requireOwned(id: string, userId: string) {
   const { document } = (await db.conversations("findOne", {
@@ -18,11 +28,13 @@ async function requireOwned(id: string, userId: string) {
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
   const { id } = await ctx.params;
+  const userId = await resolveUserId(session.user as { id?: string | null; email?: string | null });
+  if (!userId) return new Response("Unauthorized", { status: 401 });
   const { document } = (await db.conversations("findOne", {
-    filter: { id, userId: session.user.id },
+    filter: { id, userId },
   })) as { document: unknown };
 
   if (!document) return new Response("Not found", { status: 404 });
@@ -31,10 +43,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
   const { id } = await ctx.params;
-  const check = await requireOwned(id, session.user.id);
+  const userId = await resolveUserId(session.user as { id?: string | null; email?: string | null });
+  if (!userId) return new Response("Unauthorized", { status: 401 });
+  const check = await requireOwned(id, userId);
   if (check.status !== 200) return new Response(null, { status: check.status });
 
   const body = await parseJson(req, renameSchema);
@@ -43,7 +57,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (typeof body.title === "string") update.title = body.title;
 
   await db.conversations("updateOne", {
-    filter: { id, userId: session.user.id },
+    filter: { id, userId },
     update: { $set: update },
   });
 
@@ -52,13 +66,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
   const { id } = await ctx.params;
-  const check = await requireOwned(id, session.user.id);
+  const userId = await resolveUserId(session.user as { id?: string | null; email?: string | null });
+  if (!userId) return new Response("Unauthorized", { status: 401 });
+  const check = await requireOwned(id, userId);
   if (check.status !== 200) return new Response(null, { status: check.status });
 
-  await db.conversations("deleteOne", { filter: { id, userId: session.user.id } });
+  await db.conversations("deleteOne", { filter: { id, userId } });
   // Cascade-delete linked rows so user data is fully purged (GDPR / right-to-erasure).
   // Note: db.deleteOne wraps PostgREST .delete() which removes ALL matching rows.
   try {

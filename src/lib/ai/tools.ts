@@ -421,6 +421,7 @@ export async function executeTool(
 
   try {
     const input = { ...toolInput };
+
     if (toolName === "web_search") {
       const query =
         typeof input.query === "string"

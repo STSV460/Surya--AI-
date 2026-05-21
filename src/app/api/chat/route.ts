@@ -9,7 +9,7 @@ import { getAppUrl } from "@/lib/app-url";
 import { formatMemoryBlock, recallUserMemory, rememberIfExplicit } from "@/lib/memory";
 import { parseJson, isResponse } from "@/lib/validation";
 import { z } from "zod";
-import type { Message, ArtifactType, StreamEvent } from "@/types/chat";
+import type { Message, ArtifactType, SearchResult, StreamEvent } from "@/types/chat";
 import type { Project, KnowledgeFile } from "@/types/project";
 // randomUUID via globalThis.crypto (Web Crypto API)
 
@@ -28,9 +28,91 @@ const chatRequestSchema = z.object({
 });
 
 function send(controller: ReadableStreamDefaultController, event: StreamEvent) {
-  controller.enqueue(
-    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-  );
+  try {
+    controller.enqueue(
+      new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
+    );
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Controller is already closed")) return;
+    throw err;
+  }
+}
+
+function closeStream(controller: ReadableStreamDefaultController) {
+  try {
+    controller.close();
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Controller is already closed")) return;
+    throw err;
+  }
+}
+
+function buildSearchAnswer(query: string, results: SearchResult[]) {
+  const top = results.slice(0, 5);
+  if (top.length === 0) {
+    return "I could not find usable web results for that search. Try a narrower query or check the search providers.";
+  }
+
+  const asksForTitle = /\b(title|homepage)\b/i.test(query);
+  if (asksForTitle) {
+    return `The top current result is "${top[0].title}" from ${top[0].domain}.`;
+  }
+
+  const bullets = top
+    .map((result) => {
+      const snippet = result.snippet ? `: ${result.snippet}` : "";
+      return `- [${result.index}] ${result.title}${snippet}`;
+    })
+    .join("\n");
+
+  return `Here are the current web results I found:\n${bullets}`;
+}
+
+function isExplicitWebSearchPrompt(message: string) {
+  return /\b(web search|search|latest|current|today|news|updates?)\b/i.test(message);
+}
+
+async function fetchSearchResults(query: string, cookie: string) {
+  const res = await fetch(`${getAppUrl()}/api/connectors/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ action: "search", query, limit: 8 }),
+  });
+  if (!res.ok) throw new Error(`Search failed: HTTP ${res.status}`);
+  const data = (await res.json()) as { results?: SearchResult[] };
+  return data.results ?? [];
+}
+
+function extractFirstUrl(text: string) {
+  return text.match(/https?:\/\/[^\s<>"']+/i)?.[0]?.replace(/[),.]+$/, "") ?? null;
+}
+
+async function resolveUserId(sessionUser: { id?: string | null; email?: string | null }) {
+  if (sessionUser.id) return sessionUser.id;
+  if (!sessionUser.email) return "";
+
+  const { data } = await insforgeDb
+    .from("profiles")
+    .select("id")
+    .eq("email", sessionUser.email)
+    .maybeSingle();
+
+  return typeof data?.id === "string" ? data.id : "";
+}
+
+async function fetchUrlText(url: string, message: string, cookie: string) {
+  const res = await fetch(`${getAppUrl()}/api/connectors/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ action: "scrape", url, query: message }),
+  });
+  if (!res.ok) throw new Error(`URL fetch failed: HTTP ${res.status}`);
+  return (await res.json()) as {
+    url?: string;
+    title?: string;
+    text?: string;
+    provider?: string;
+  };
 }
 
 // Artifact state machine — parses <artifact ...> tags across streaming chunks
@@ -107,7 +189,13 @@ export async function POST(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const userId = (session.user as { id: string }).id;
+  const userId = await resolveUserId(session.user as { id?: string | null; email?: string | null });
+  if (!userId) {
+    return Response.json(
+      { error: "Your session is missing a user profile. Please sign in again." },
+      { status: 401 }
+    );
+  }
 
   // Rate limiting — 10 AI requests per minute per user
   const { success } = await aiLimiter.check(userId);
@@ -120,7 +208,8 @@ export async function POST(req: Request) {
 
   const body = await parseJson(req, chatRequestSchema);
   if (isResponse(body)) return body;
-  const { message, editMessageId, thinking = false, conversationId, projectId, enableConnectors = false, enableWebSearch = true, enableImageGen = false, enableVideoGen = false } = body;
+  const { message, editMessageId, thinking = false, conversationId, projectId, enableConnectors = false, enableImageGen = false, enableVideoGen = false } = body;
+  const enableWebSearch = true;
 
   const userEmail = session.user.email ?? "";
 
@@ -155,7 +244,10 @@ export async function POST(req: Request) {
   // Forward session cookie for internal tool calls
   const cookie = req.headers.get("cookie") ?? "";
 
-  // Auto-select the best model
+  const requestedUrl = extractFirstUrl(message);
+
+  // Auto-select the chat model. Web search is always available as a tool, but
+  // it should not force normal chat onto the search-specialized model.
   const model = selectModel(message, thinking);
   const modelId = MODEL_MAP[model];
   const maxTokens = MAX_TOKENS[model];
@@ -362,6 +454,120 @@ export async function POST(req: Request) {
     });
   }
 
+  // Explicit web-search prompts should not wait for a model to decide whether
+  // to call the search tool. Go straight to SearXNG/Firecrawl and always stream
+  // a visible answer so the UI never ends up with sources/no answer.
+  if (enableWebSearch && !extractFirstUrl(message) && isExplicitWebSearchPrompt(message)) {
+    const searchStream = new ReadableStream({
+      async start(controller) {
+        try {
+          const results = await fetchSearchResults(message, cookie);
+          const answer = buildSearchAnswer(message, results);
+
+          if (results.length > 0) {
+            send(controller, { type: "search_results", searchResults: results });
+          }
+          send(controller, { type: "text", content: answer });
+
+          const assistantMsgId = crypto.randomUUID();
+          await db.messages("insertOne", {
+            document: {
+              id: assistantMsgId,
+              conversationId: convId,
+              role: "assistant",
+              content: answer,
+              timestamp: new Date().toISOString(),
+            },
+          });
+
+          send(controller, { type: "done", content: convId });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          send(controller, { type: "error", error: msg });
+        } finally {
+          closeStream(controller);
+        }
+      },
+    });
+
+    return new Response(searchStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  let urlContext = "";
+  if (requestedUrl) {
+    try {
+      const fetched = await fetchUrlText(requestedUrl, message, cookie);
+      if (fetched.text?.trim()) {
+        if (fetched.provider?.startsWith("insforge-gateway-") || fetched.provider?.startsWith("gemini-")) {
+          const linkStream = new ReadableStream({
+            async start(controller) {
+              try {
+                send(controller, { type: "text", content: fetched.text ?? "" });
+
+                const assistantMsgId = crypto.randomUUID();
+                await db.messages("insertOne", {
+                  document: {
+                    id: assistantMsgId,
+                    conversationId: convId,
+                    role: "assistant",
+                    content: fetched.text ?? "",
+                    timestamp: new Date().toISOString(),
+                  },
+                });
+
+                send(controller, { type: "done", content: convId });
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Unknown error";
+                send(controller, { type: "error", error: msg });
+              } finally {
+                closeStream(controller);
+              }
+            },
+          });
+
+          return new Response(linkStream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            },
+          });
+        }
+
+        urlContext = `
+
+<fetched_url_content url="${requestedUrl}" title="${(fetched.title ?? "").replace(/[<>&"]/g, "")}" provider="${fetched.provider ?? "scrape"}">
+${fetched.text}
+</fetched_url_content>`;
+      } else {
+        const fallbackResults = await fetchSearchResults(`${fetched.title || requestedUrl} summary transcript`, cookie);
+        const fallbackText = fallbackResults
+          .slice(0, 6)
+          .map((result) => `[${result.index}] ${result.title}: ${result.snippet} (${result.url})`)
+          .join("\n");
+        urlContext = `
+
+<fetched_url_content url="${requestedUrl}" provider="${fetched.provider ?? "scrape"}">
+No direct readable text or transcript was available from this URL.
+${fallbackText ? `Related web results:\n${fallbackText}` : ""}
+</fetched_url_content>`;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown URL fetch error";
+      urlContext = `
+
+<fetched_url_content url="${requestedUrl}">
+Fetch failed: ${msg}
+</fetched_url_content>`;
+    }
+  }
+
   // Build messages array
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiMessages: any[] = [
@@ -369,7 +575,7 @@ export async function POST(req: Request) {
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
-    { role: "user" as const, content: message },
+    { role: "user" as const, content: urlContext ? `${message}${urlContext}` : message },
   ];
 
   const memorySurface = projectId ? "project" : "chat";
@@ -494,7 +700,11 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
 </artifact>
 <artifact type="interactive" title="Demo Title">
 // self-contained React component
-</artifact>${connectorNote}${userContext}${memoryBlock}`;
+</artifact>
+
+If the user asks about a URL and the message contains <fetched_url_content>, use that fetched content as primary context. Do not say you cannot access the URL unless the fetched block explicitly says fetch failed or no readable text was available. If only related web results are available, summarize those and clearly say direct transcript/page text was unavailable.
+
+For product links from Amazon, Flipkart, Myntra, Meesho, or other stores, explain what the product page contains: product name, brand, price, rating, reviews, available offers, delivery/return details, sizes/colors, key specifications, visible pros/cons, and buying advice. If a field is not visible in fetched content, say "not shown" instead of inventing it.${connectorNote}${userContext}${memoryBlock}`;
 
   const systemPrompt = projectContext ? `${projectContext}\n\n---\n\n${basePrompt}` : basePrompt;
 
@@ -592,6 +802,8 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
           const toolCalls = Object.values(toolCallAccumulator);
 
           if (finishReason === "tool_calls" && toolCalls.length > 0) {
+            let answeredFromSearch = false;
+
             // Add assistant message with tool_calls to loop messages
             loopMessages.push({
               role: "assistant",
@@ -637,9 +849,12 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
                   const parsed = JSON.parse(result);
                   if (parsed.results?.length) {
                     send(controller, { type: "search_results", searchResults: parsed.results });
+                    const searchAnswer = buildSearchAnswer(message, parsed.results);
+                    fullContent += searchAnswer;
+                    send(controller, { type: "text", content: searchAnswer });
+                    answeredFromSearch = true;
                   }
                 } catch { /* ignore parse errors */ }
-                // Keep using the same model for synthesis (Gemini streaming is incompatible)
               }
 
               // image_gen post-processing: emit inline image artifact
@@ -674,8 +889,9 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
               });
             }
 
-            // Continue loop — let Claude respond with tool results
-            continueLoop = true;
+            // Web-search results are already answered from sources. Avoid a second
+            // synthesis model call, which can hang and leave the UI with sources only.
+            continueLoop = !answeredFromSearch;
           } else {
             // finish_reason === "stop" or no tool calls
             // Opus + thinking sometimes returns only thinking blocks with no text content.
@@ -705,7 +921,7 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
             type: "error",
             error: "The model returned an empty response. Please try again.",
           });
-          controller.close();
+          closeStream(controller);
           return;
         }
 
@@ -738,7 +954,7 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
         const msg = err instanceof Error ? err.message : "Unknown error";
         send(controller, { type: "error", error: msg });
       } finally {
-        controller.close();
+        closeStream(controller);
       }
     },
   });

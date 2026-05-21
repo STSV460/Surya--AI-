@@ -4,7 +4,8 @@
  * Uses @insforge/sdk (Supabase/PostgREST-compatible BaaS).
  * All database operations go through this file.
  *
- * Two exports:
+ * Exports:
+ *   createInsforgeAuthClient — auth-only client using anon key, never admin/service key
  *   insforgeDb  — raw PostgREST client (used by auth.ts, already uses snake_case)
  *   db          — MongoDB-style wrappers with camelCase↔snake_case conversion
  */
@@ -38,6 +39,15 @@ const INSFORGE_BASE_URL = process.env.INSFORGE_BASE_URL ?? "";
 const INSFORGE_API_KEY = process.env.INSFORGE_API_KEY ?? "";
 const INSFORGE_ANON_KEY = process.env.INSFORGE_ANON_KEY ?? "";
 
+// Auth client factory — uses anon key only. Keep admin/service key away from
+// login flows. Create per request because the SDK stores session tokens.
+export function createInsforgeAuthClient() {
+  return createClient({
+    baseUrl: INSFORGE_BASE_URL,
+    anonKey: INSFORGE_ANON_KEY,
+    isServerMode: true,
+  });
+}
 
 // Server-side client — uses admin API key for Authorization (bypasses RLS)
 export const insforge = createClient({

@@ -3,7 +3,7 @@ import { ArrowRight, Code2, Cpu, Zap, Layout } from "lucide-react";
 
 export const metadata = {
   title: "The Ultimate Coding AI Assistant for Developers | Surya AI",
-  description: "Accelerate your development with Surya AI. The best free coding AI for refactoring, debugging, and building apps instantly with Claude Sonnet 4.6. Try our AI App Builder today.",
+  description: "Accelerate your development with Surya AI. The Indian AI chatbot for refactoring, debugging, research, and building apps instantly.",
 };
 
 export default function CodingSEO() {
@@ -41,8 +41,8 @@ export default function CodingSEO() {
           <div className="p-6 rounded-2xl border border-white/5 bg-surface-1/30 text-left flex gap-4">
             <Cpu className="text-surya-400 shrink-0" size={24} />
             <div>
-              <h3 className="text-lg font-medium text-white mb-1">Claude Sonnet 4.6</h3>
-              <p className="text-sm text-gray-500">Industry-leading coding intelligence with extended context and deep reasoning.</p>
+              <h3 className="text-lg font-medium text-white mb-1">Advanced Coding AI</h3>
+              <p className="text-sm text-gray-500">Strong coding intelligence with extended context and deep reasoning.</p>
             </div>
           </div>
           <div className="p-6 rounded-2xl border border-white/5 bg-surface-1/30 text-left flex gap-4">
@@ -81,8 +81,8 @@ export default function CodingSEO() {
         <h2 className="text-white text-xl font-semibold">The Best Coding AI Assistant for Professional Developers</h2>
         <p>
           Developers today need more than just code completion. You need a system that understands architecture, 
-          state management, and modern best practices. Surya AI leverages Claude Sonnet 4.6 and Opus to provide
-          high-fidelity coding assistance that feels like pair-programming with a senior engineer.
+          state management, and modern best practices. Surya AI provides high-fidelity coding assistance
+          that feels like pair-programming with a senior engineer.
         </p>
         <p>
           Our <strong>AI Artifacts</strong> feature allows you to see your code in action immediately, reducing the feedback loop 

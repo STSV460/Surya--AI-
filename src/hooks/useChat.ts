@@ -40,19 +40,16 @@ export function useChat(projectId?: string) {
     streamingContent,
     thinkingEnabled,
     enableConnectors,
-    enableWebSearch,
     enableImageGen,
     enableVideoGen,
     enableCrew,
     crewMode,
     crewEvents,
-    activeConversationId,
     addMessage,
     updateStreamingContent,
     setIsStreaming,
     setActiveConversation,
     setEnableConnectors,
-    setEnableWebSearch,
     setEnableImageGen,
     setEnableVideoGen,
     setEnableCrew,
@@ -67,7 +64,9 @@ export function useChat(projectId?: string) {
     async (content: string, conversationId?: string, options?: { editMessageId?: string }) => {
       if (isStreaming || !content.trim()) return;
 
-      const convId = conversationId ?? activeConversationId ?? undefined;
+      // Use route-provided conversation only. On /chat (new chat), falling
+      // back to store state can reuse a stale conversation id and trigger 404.
+      const convId = conversationId;
       const editMessageId = options?.editMessageId;
 
       if (editMessageId) {
@@ -131,7 +130,7 @@ export function useChat(projectId?: string) {
             conversationId: convId,
             projectId: projectId ?? undefined,
             enableConnectors,
-            enableWebSearch,
+            enableWebSearch: true,
             enableImageGen,
             enableVideoGen,
           }),
@@ -268,10 +267,8 @@ export function useChat(projectId?: string) {
     },
     [
       isStreaming,
-      activeConversationId,
       thinkingEnabled,
       enableConnectors,
-      enableWebSearch,
       enableImageGen,
       enableVideoGen,
       enableCrew,
@@ -301,8 +298,6 @@ export function useChat(projectId?: string) {
     stopStreaming,
     enableConnectors,
     setEnableConnectors,
-    enableWebSearch,
-    setEnableWebSearch,
     enableImageGen,
     setEnableImageGen,
     enableVideoGen,

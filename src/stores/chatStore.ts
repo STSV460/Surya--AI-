@@ -11,8 +11,6 @@ interface ChatStore {
   thinkingEnabled: boolean;
   /** When true, Claude is given tool definitions to call Google/GitHub connectors */
   enableConnectors: boolean;
-  /** When true, the chat API will perform web search before responding */
-  enableWebSearch: boolean;
   /** When true, chat generates images from the user's prompt */
   enableImageGen: boolean;
   /** When true, chat attempts video generation (experimental) */
@@ -30,7 +28,6 @@ interface ChatStore {
   setIsStreaming: (isStreaming: boolean) => void;
   setThinkingEnabled: (enabled: boolean) => void;
   setEnableConnectors: (enabled: boolean) => void;
-  setEnableWebSearch: (enabled: boolean) => void;
   setEnableImageGen: (enabled: boolean) => void;
   setEnableVideoGen: (enabled: boolean) => void;
   setEnableCrew: (enabled: boolean) => void;
@@ -48,7 +45,6 @@ export const useChatStore = create<ChatStore>((set) => ({
   streamingContent: "",
   thinkingEnabled: true,
   enableConnectors: false,
-  enableWebSearch: true,
   enableImageGen: false,
   enableVideoGen: false,
   enableCrew: false,
@@ -71,7 +67,6 @@ export const useChatStore = create<ChatStore>((set) => ({
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
   setEnableConnectors: (enableConnectors) => set({ enableConnectors }),
-  setEnableWebSearch: (enableWebSearch) => set({ enableWebSearch }),
   setEnableImageGen: (enableImageGen) => set({ enableImageGen }),
   setEnableVideoGen: (enableVideoGen) => set({ enableVideoGen }),
   setEnableCrew: (enableCrew) => set({ enableCrew }),

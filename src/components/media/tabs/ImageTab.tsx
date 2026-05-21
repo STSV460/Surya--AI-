@@ -44,7 +44,7 @@ export function ImageTab() {
           className="w-full px-3 py-2 bg-surface-2 border border-white/8 rounded-lg text-sm text-white placeholder:text-white/30 outline-none focus:border-surya-500/50"
         />
       </div>
-      <p className="text-[11px] text-white/40">Powered by Gemini 3.1 Pro Preview via InsForge.</p>
+      <p className="text-[11px] text-white/40">Powered by Surya AI via InsForge.</p>
       <button
         onClick={handleGenerate}
         disabled={busy || !prompt.trim()}

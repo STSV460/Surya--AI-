@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { ResearchStage, ArtifactType } from "@/types/chat";
+import type {
+  ResearchStage,
+  ArtifactType,
+  ResearchCouncilModelId,
+  ResearchCouncilUpdate,
+} from "@/types/chat";
 
 export function useResearch() {
   const [isRunning, setIsRunning] = useState(false);
@@ -10,17 +15,20 @@ export function useResearch() {
   const [completedArtifact, setCompletedArtifact] = useState<ArtifactType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resultConversationId, setResultConversationId] = useState<string | null>(null);
+  const [councilUpdates, setCouncilUpdates] = useState<ResearchCouncilUpdate[]>([]);
 
   const startResearch = useCallback(async (
     question: string,
     conversationId?: string,
     projectId?: string,
+    councilModels?: ResearchCouncilModelId[],
   ) => {
     setIsRunning(true);
     setStage("generating_queries");
     setDetail("Analyzing your question...");
     setCompletedArtifact(null);
     setError(null);
+    setCouncilUpdates([]);
 
     let artifactId = "";
     let artifactTitle = "";
@@ -30,7 +38,7 @@ export function useResearch() {
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, conversationId, projectId }),
+        body: JSON.stringify({ question, conversationId, projectId, councilModels }),
       });
 
       if (!res.ok) throw new Error(`Research failed: ${res.status}`);
@@ -55,6 +63,16 @@ export function useResearch() {
               case "research_progress":
                 setStage(event.researchProgress?.stage ?? null);
                 setDetail(event.researchProgress?.detail ?? "");
+                if (event.researchProgress?.council) {
+                  const update = event.researchProgress.council as ResearchCouncilUpdate;
+                  setCouncilUpdates((current) => {
+                    const existingIndex = current.findIndex((item) => item.id === update.id);
+                    if (existingIndex === -1) return [...current, update];
+                    const next = [...current];
+                    next[existingIndex] = { ...next[existingIndex], ...update };
+                    return next;
+                  });
+                }
                 break;
               case "artifact_start":
                 artifactId = event.artifact?.id ?? crypto.randomUUID();
@@ -105,6 +123,7 @@ export function useResearch() {
     setCompletedArtifact(null);
     setError(null);
     setResultConversationId(null);
+    setCouncilUpdates([]);
   }, []);
 
   return {
@@ -114,6 +133,7 @@ export function useResearch() {
     completedArtifact,
     error,
     resultConversationId,
+    councilUpdates,
     startResearch,
     reset,
   };

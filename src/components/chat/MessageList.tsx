@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
-import { BarChart3, Code2, FileText, Search, Sparkles } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { BarChart3, Code2, FileText, Search } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
+import { ResearchProgress } from "@/components/chat/ResearchProgress";
 import { useUserStore } from "@/stores/userStore";
-import type { Message } from "@/types/chat";
+import type { Message, ResearchCouncilUpdate, ResearchStage } from "@/types/chat";
 
 const SUGGESTED_PROMPTS = [
   {
@@ -18,7 +19,7 @@ const SUGGESTED_PROMPTS = [
   {
     icon: Search,
     title: "Deep Research",
-    subtitle: "Comprehensive multi-source analysis",
+    subtitle: "Model council with web search",
     action: "Research the current state of large language models and their impact on software development in 2025",
   },
   {
@@ -51,8 +52,15 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         transition={{ duration: 0.22 }}
         className="text-center mb-9"
       >
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-surya-500 shadow-[0_18px_45px_rgba(26,115,232,0.18)]">
-          <Sparkles size={22} className="text-white" />
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-[#151b2a] shadow-[0_18px_45px_rgba(26,115,232,0.18)] overflow-hidden">
+          <Image
+            src="/logo.png"
+            alt="Surya AI"
+            width={56}
+            height={56}
+            className="h-full w-full object-cover"
+            priority
+          />
         </div>
         <h1 className="text-[28px] font-semibold text-white mb-2">
           {greeting}, {firstName}
@@ -93,10 +101,25 @@ interface MessageListProps {
   streamingContent: string;
   onSend?: (text: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
+  researchStage?: ResearchStage | null;
+  researchDetail?: string;
+  isResearching?: boolean;
+  councilUpdates?: ResearchCouncilUpdate[];
 }
 
-export function MessageList({ messages, isStreaming, streamingContent, onSend, onEditMessage }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  streamingContent,
+  onSend,
+  onEditMessage,
+  researchStage,
+  researchDetail,
+  isResearching = false,
+  councilUpdates = [],
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const wasStreamingRef = useRef(false);
 
   useEffect(() => {
@@ -112,13 +135,28 @@ export function MessageList({ messages, isStreaming, streamingContent, onSend, o
     }
   }, [isStreaming]);
 
-  if (messages.length === 0 && !isStreaming) {
+  if (messages.length === 0 && !isStreaming && !isResearching) {
     return <WelcomeScreen onSend={onSend ?? (() => {})} />;
   }
 
   return (
-    <ScrollArea className="flex-1 min-h-0 px-4">
-      <div className="max-w-3xl mx-auto py-8">
+    <div
+      ref={scrollRef}
+      onWheelCapture={(event) => {
+        const scroller = scrollRef.current;
+        if (!scroller || event.deltaY === 0) return;
+        scroller.scrollTop += event.deltaY;
+      }}
+      className="h-0 flex-1 min-h-0 overflow-y-scroll overscroll-contain touch-pan-y px-4"
+    >
+      <div className="max-w-3xl mx-auto py-8 pb-12">
+        <ResearchProgress
+          stage={researchStage ?? null}
+          detail={researchDetail}
+          isRunning={isResearching}
+          councilUpdates={councilUpdates}
+        />
+
         {messages.map((msg, index) => {
           const previousUser = [...messages.slice(0, index)]
             .reverse()
@@ -158,8 +196,14 @@ export function MessageList({ messages, isStreaming, streamingContent, onSend, o
         {/* Thinking animation — before first streaming token */}
         {isStreaming && !streamingContent && (
           <div className="flex items-center gap-3 mb-7">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-surya-500">
-              <Sparkles size={14} className="text-white animate-pulse" />
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-[#151b2a] overflow-hidden">
+              <Image
+                src="/logo.png"
+                alt="Surya AI"
+                width={32}
+                height={32}
+                className="h-full w-full object-cover animate-pulse"
+              />
             </div>
             <div className="flex items-center gap-1.5">
               {[0, 1, 2].map((i) => (
@@ -175,6 +219,6 @@ export function MessageList({ messages, isStreaming, streamingContent, onSend, o
 
         <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

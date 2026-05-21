@@ -3,8 +3,13 @@ import { auth } from "@/auth";
 import * as cheerio from "cheerio";
 // randomUUID via globalThis.crypto (Web Crypto API)
 import { safeFetch } from "@/lib/web-utils";
-import { insforge, db } from "@/lib/insforge";
-import { MODEL_MAP, TASK_MODEL_MAP } from "@/lib/ai/models";
+import { insforge, db, insforgeDb } from "@/lib/insforge";
+import {
+  DEFAULT_RESEARCH_COUNCIL_MODELS,
+  MODEL_MAP,
+  RESEARCH_COUNCIL_MODEL_OPTIONS,
+  type ResearchCouncilModelId,
+} from "@/lib/ai/models";
 import { aiLimiter } from "@/lib/rate-limit";
 import { getAppUrl } from "@/lib/app-url";
 import { requireOwnedConversation, requireOwnedProject } from "@/lib/auth-guard";
@@ -18,17 +23,42 @@ const researchRequestSchema = z.object({
   question: z.string().trim().min(1).max(20_000),
   conversationId: z.string().trim().min(1).max(160).optional(),
   projectId: z.string().trim().min(1).max(160).optional(),
+  councilModels: z.array(
+    z.enum(RESEARCH_COUNCIL_MODEL_OPTIONS.map((model) => model.id) as [
+      ResearchCouncilModelId,
+      ...ResearchCouncilModelId[],
+    ])
+  ).min(1).max(7).optional(),
 });
 
 function send(controller: ReadableStreamDefaultController, event: StreamEvent) {
   controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
 }
 
+async function resolveUserId(sessionUser: { id?: string | null; email?: string | null }) {
+  if (sessionUser.id) return sessionUser.id;
+  if (!sessionUser.email) return "";
+
+  const { data } = await insforgeDb
+    .from("profiles")
+    .select("id")
+    .eq("email", sessionUser.email)
+    .maybeSingle();
+
+  return typeof data?.id === "string" ? data.id : "";
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
-  const userId = (session.user as { id: string }).id;
+  const userId = await resolveUserId(session.user as { id?: string | null; email?: string | null });
+  if (!userId) {
+    return Response.json(
+      { error: "Your session is missing a user profile. Please sign in again." },
+      { status: 401 }
+    );
+  }
 
   // Rate limiting — research is the most expensive route
   const { success } = await aiLimiter.check(userId);
@@ -42,6 +72,7 @@ export async function POST(req: NextRequest) {
   const body = await parseJson(req, researchRequestSchema);
   if (isResponse(body)) return body;
   const { question, conversationId, projectId } = body;
+  const requestedCouncilModels = body.councilModels ?? [...DEFAULT_RESEARCH_COUNCIL_MODELS];
 
   try {
     if (conversationId) await requireOwnedConversation(conversationId, userId);
@@ -138,7 +169,7 @@ export async function POST(req: NextRequest) {
                 const html = await res.text();
                 const $ = cheerio.load(html);
                 $("script, style, nav, footer, header, aside, .ad, #ad").remove();
-                const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 6000);
+                const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 2500);
                 if (text.length > 100) scrapedContent.push({ url, text });
               } catch { /* skip failed scrapes */ }
             })
@@ -166,7 +197,7 @@ export async function POST(req: NextRequest) {
         const uniqueScraped: { url: string; text: string }[] = [];
         for (const finding of allFindings) {
           for (const s of finding.scrapedContent) {
-            if (!seenScrapeUrls.has(s.url) && uniqueScraped.length < 15) {
+            if (!seenScrapeUrls.has(s.url) && uniqueScraped.length < 8) {
               seenScrapeUrls.add(s.url);
               uniqueScraped.push(s);
             }
@@ -178,19 +209,273 @@ export async function POST(req: NextRequest) {
           researchProgress: { stage: "scraping", detail: `Analyzing ${uniqueScraped.length} sources...` },
         });
 
-        // ── Stage 3: Analyst (Opus) synthesizes ───────────────────────────────
-        send(controller, {
-          type: "research_progress",
-          researchProgress: { stage: "synthesizing" },
-        });
+        const sourceItems =
+          uniqueScraped.length > 0
+            ? uniqueScraped.map((s, i) => {
+                const meta = allResults.find((r) => r.url === s.url);
+                return {
+                  index: i + 1,
+                  title: meta?.title ?? s.url,
+                  url: s.url,
+                  text: s.text,
+                };
+              })
+            : allResults.slice(0, 8).map((r, i) => ({
+                index: i + 1,
+                title: r.title,
+                url: r.url,
+                text: r.snippet,
+              }));
 
-        const sourcesBlock = uniqueScraped
-          .map((s, i) => `[${i + 1}] ${s.url}\n${s.text}`)
+        const sourcesBlock = sourceItems
+          .map((s) => `[${s.index}] ${s.title}\n${s.url}\n${s.text}`)
           .join("\n\n---\n\n");
 
-        const citationMap = allResults
-          .map((r) => `[${r.index}] ${r.title} — ${r.url}`)
+        const citationMap = sourceItems
+          .map((s) => `[${s.index}] ${s.title} — ${s.url}`)
           .join("\n");
+
+        // ── Stage 3: Model Council debates using InsForge Gateway models ─────
+        send(controller, {
+          type: "research_progress",
+          researchProgress: { stage: "debating", detail: "Opening model council..." },
+        });
+
+        const selectedModelSet = new Set(requestedCouncilModels);
+        const councilMembers = RESEARCH_COUNCIL_MODEL_OPTIONS
+          .filter((option) => selectedModelSet.has(option.id))
+          .map((option) => ({
+            id: option.id,
+            name: `${option.label} Council Member`,
+            provider: option.provider,
+            model: MODEL_MAP[option.id],
+            lens: option.lens,
+          }));
+
+        const finalChair =
+          councilMembers.find((member) => member.id === "opus") ??
+          councilMembers.find((member) => member.id === "gpt54") ??
+          councilMembers.find((member) => member.id === "gemini") ??
+          councilMembers[0];
+
+        if (!finalChair) {
+          throw new Error("Select at least one research model.");
+        }
+
+        send(controller, {
+          type: "research_progress",
+          researchProgress: {
+            stage: "debating",
+            detail: `Selected: ${councilMembers.map((member) => member.name.replace(" Council Member", "")).join(", ")}`,
+          },
+        });
+
+        function sendCouncilUpdate(
+          member: {
+            id: ResearchCouncilModelId;
+            name: string;
+            provider: string;
+          },
+          phase: "reading" | "memo" | "debate" | "chair",
+          status: "thinking" | "done" | "error",
+          content?: string
+        ) {
+          send(controller, {
+            type: "research_progress",
+            researchProgress: {
+              stage: phase === "chair" ? "synthesizing" : "debating",
+              detail:
+                status === "thinking"
+                  ? `${member.name.replace(" Council Member", "")} ${phase === "memo" ? "answering" : phase === "debate" ? "discussing" : phase === "chair" ? "writing final conclusion" : "reading sources"}...`
+                  : `${member.name.replace(" Council Member", "")} ${phase === "memo" ? "answered" : phase === "debate" ? "finished discussion" : phase === "chair" ? "finished final conclusion" : "finished reading"}`,
+              council: {
+                id: member.id,
+                label: member.name.replace(" Council Member", ""),
+                provider: member.provider,
+                phase,
+                status,
+                content,
+              },
+            },
+          });
+        }
+
+        async function councilCompletion({
+          model,
+          system,
+          user,
+          maxTokens,
+        }: {
+          model: string;
+          system: string;
+          user: string;
+          maxTokens: number;
+        }) {
+          const models =
+            model === MODEL_MAP.gemini
+              ? Array.from(new Set([model, "google/gemini-3.1-pro-preview"]))
+              : [model];
+
+          let lastError: unknown;
+          for (const candidateModel of models) {
+            try {
+              const response = await aiClient.chat.completions.create({
+                model: candidateModel,
+                messages: [
+                  { role: "system", content: system },
+                  { role: "user", content: user },
+                ],
+                stream: false,
+                maxTokens,
+              });
+
+              const content = response.choices[0]?.message?.content?.trim() ?? "";
+              if (content) return content;
+              lastError = new Error(`${candidateModel} returned no content`);
+            } catch (err) {
+              lastError = err;
+            }
+          }
+
+          if (lastError instanceof Error) throw lastError;
+          throw new Error("Gateway returned no response");
+        }
+
+        const sourcePayload = `Research question: ${question}
+
+## Web Search Sources
+${sourcesBlock || "No readable source text was found. Use the search result list and be transparent about limits."}
+
+## Citation Reference
+${citationMap || "No sources found."}`;
+
+        const firstRound: Array<(typeof councilMembers)[number] & { content: string }> = [];
+        for (const member of councilMembers) {
+            sendCouncilUpdate(member, "reading", "thinking");
+            sendCouncilUpdate(member, "memo", "thinking");
+
+            try {
+              const content = await councilCompletion({
+                model: member.model,
+                maxTokens: 1200,
+                system: `You are ${member.name}, one member of Surya AI's Deep Research Model Council. Your lens: ${member.lens}.
+
+Use only the provided web sources. Cite source numbers like [1], [2]. Do not invent facts. Identify uncertainty and missing evidence.`,
+                user: `${sourcePayload}
+
+              Write your independent council memo:
+- direct answer
+- strongest evidence
+- weak or missing evidence
+- risks / caveats
+- preliminary conclusion`,
+              });
+
+              if (!content.trim()) {
+                const fallback = `${member.name.replace(" Council Member", "")} returned no answer from the gateway. It will be excluded from the final council synthesis.`;
+                sendCouncilUpdate(member, "memo", "error", fallback);
+                continue;
+              }
+
+              sendCouncilUpdate(member, "memo", "done", content);
+              firstRound.push({ ...member, content });
+            } catch (err) {
+              const rawMessage = err instanceof Error ? err.message : "";
+              const cleanMessage = rawMessage.includes("Unexpected token '<'")
+                ? "Gemini gateway returned an HTML error page instead of JSON. Check that the selected Gemini text model is enabled in InsForge."
+                : rawMessage;
+              const message =
+                cleanMessage
+                  ? `${member.name.replace(" Council Member", "")} failed: ${cleanMessage}`
+                  : `${member.name.replace(" Council Member", "")} failed.`;
+              sendCouncilUpdate(member, "memo", "error", message);
+            }
+        }
+
+        const firstRoundBlock = firstRound
+          .map((note) => `## ${note.name}\n${note.content}`)
+          .join("\n\n---\n\n");
+
+        send(controller, {
+          type: "research_progress",
+          researchProgress: { stage: "debating", detail: "Council members challenging each other..." },
+        });
+
+        const secondRound: Array<{ name: string; content: string }> = [];
+        let debateTranscript = "";
+
+        for (const member of firstRound) {
+          sendCouncilUpdate(member, "debate", "thinking");
+          try {
+            const content = await councilCompletion({
+              model: member.model,
+              maxTokens: 900,
+              system: `You are ${member.name} in Surya AI's live Model Council debate.
+
+Rules:
+- Speak directly to other named models, like "Claude Opus 4.6, I disagree because..." or "Gemini 3.1 Pro is right about..."
+- Challenge at least one peer claim.
+- Defend or revise your own first memo.
+- Mention what evidence changes your mind.
+- Use citations for factual claims.
+- Keep it as debate dialogue, not another standalone essay.`,
+              user: `Research question: ${question}
+
+## Source Reference
+${citationMap || "No sources found."}
+
+## Round 1 Council Memos
+${firstRoundBlock}
+
+## Debate So Far
+${debateTranscript || "No one has spoken yet. Open the debate and call out another model by name."}
+
+Write your next council turn now. Address specific peers by model name.`,
+            });
+
+            sendCouncilUpdate(member, "debate", "done", content);
+            secondRound.push({ name: member.name, content });
+            debateTranscript += `\n\n### ${member.name}\n${content}`;
+          } catch (err) {
+            const rawMessage = err instanceof Error ? err.message : "";
+            const message = rawMessage
+              ? `${member.name.replace(" Council Member", "")} debate failed: ${rawMessage}`
+              : `${member.name.replace(" Council Member", "")} debate failed.`;
+            sendCouncilUpdate(member, "debate", "error", message);
+          }
+        }
+
+        const debateBlock = secondRound
+          .map((note) => `## ${note.name} Round 2\n${note.content}`)
+          .join("\n\n---\n\n");
+        const visibleDiscussion =
+          secondRound.length > 0
+            ? `## Model Council Discussion\n\n${secondRound
+                .map((note) => `### ${note.name.replace(" Council Member", "")}\n${note.content}`)
+                .join("\n\n")}\n\n## Final Council Answer\n\n`
+            : "## Model Council Discussion\n\nNo council debate turns completed. Final answer below uses the available web sources and successful model memos.\n\n## Final Council Answer\n\n";
+        const finalWriter =
+          firstRound.find((member) => member.id === finalChair.id) ??
+          firstRound.find((member) => member.id === "gpt54") ??
+          firstRound.find((member) => member.id === "gemini") ??
+          firstRound.find((member) => member.id === "sonnet") ??
+          firstRound[0] ??
+          finalChair;
+
+        // ── Stage 4: Council Chair writes final report ───────────────────────
+        send(controller, {
+          type: "research_progress",
+          researchProgress: { stage: "synthesizing", detail: "Writing council conclusion..." },
+        });
+        if (finalWriter.id !== finalChair.id) {
+          sendCouncilUpdate(
+            finalChair,
+            "chair",
+            "error",
+            `${finalChair.name.replace(" Council Member", "")} did not finish a council memo, so ${finalWriter.name.replace(" Council Member", "")} is writing the final answer.`
+          );
+        }
+        sendCouncilUpdate(finalWriter, "chair", "thinking");
 
         const artifactId = crypto.randomUUID();
         const artifactTitle = `Research: ${question.slice(0, 60)}${question.length > 60 ? "..." : ""}`;
@@ -200,41 +485,49 @@ export async function POST(req: NextRequest) {
           artifact: { id: artifactId, type: "document", title: artifactTitle },
         });
 
-        const opusStream = await aiClient.chat.completions.create({
-          model: MODEL_MAP[TASK_MODEL_MAP.deepResearch],
+        let fullContent = visibleDiscussion;
+        send(controller, { type: "text", content: visibleDiscussion });
+
+        const finalStream = await aiClient.chat.completions.create({
+          model: finalWriter.model,
           messages: [
             {
               role: "system",
               content:
-                "You are a world-class research analyst. Synthesize the provided sources into a comprehensive, well-structured research report. Use inline citations like [1], [2] referencing the source numbers. Structure the report with clear ## headings. Be thorough, factual, and insightful. End with a ## Sources section listing all cited sources.",
+                "You are the chair of Surya AI's Deep Research Model Council. The app already displayed the council discussion above your answer. Now write only the final council answer. Use inline citations like [1], [2] for factual claims. Resolve disagreements. Name which positions won and why. Do not invent missing facts. Structure with clear ### headings under the existing 'Final Council Answer' section. Include a concise final conclusion and a ### Sources section.",
             },
             {
               role: "user",
-              content: `Research question: ${question}\n\n## Available Sources\n\n${sourcesBlock}\n\n## Citation Reference\n${citationMap}\n\nWrite the comprehensive research report now:`,
+              content: `${sourcePayload}
+
+## Round 1 Council Memos
+${firstRoundBlock || "No council memo succeeded. Write from sources only."}
+
+## Round 2 Debate
+${debateBlock || "No second-round debate succeeded. Note this limitation only if relevant."}
+
+Write final council answer now. Do not repeat the full debate transcript; synthesize it.`,
             },
           ],
           stream: true,
-          maxTokens: 16000,
+          maxTokens: 5000,
         });
 
-        let fullContent = "";
-        for await (const chunk of opusStream) {
+        for await (const chunk of finalStream) {
           const delta = chunk.choices[0]?.delta?.content ?? "";
           if (delta) {
             fullContent += delta;
             send(controller, { type: "text", content: delta });
           }
         }
+        sendCouncilUpdate(finalWriter, "chair", "done", fullContent);
 
         send(controller, {
           type: "artifact_end",
           artifact: { id: artifactId, type: "document", title: artifactTitle, content: fullContent },
         });
 
-        // ── Stage 4: Coordinator persists to InsForge ─────────────────────────
-        const userId =
-          (session.user as { id?: string }).id ?? session.user.email ?? "";
-
+        // ── Stage 5: Coordinator persists to InsForge ─────────────────────────
         let convId = conversationId;
         if (!convId) {
           const conv = await db.conversations("insertOne", {
@@ -242,7 +535,7 @@ export async function POST(req: NextRequest) {
               id: crypto.randomUUID(),
               userId,
               title: `Research: ${question.slice(0, 50)}`,
-              model: MODEL_MAP[TASK_MODEL_MAP.deepResearch],
+              model: finalWriter.model,
               projectId: projectId ?? null,
               updatedAt: new Date().toISOString(),
               createdAt: new Date().toISOString(),
@@ -251,6 +544,18 @@ export async function POST(req: NextRequest) {
           convId = conv?.document?.id ?? conv?.id ?? crypto.randomUUID();
         }
 
+        const now = new Date().toISOString();
+        const userMsgId = crypto.randomUUID();
+        await db.messages("insertOne", {
+          document: {
+            id: userMsgId,
+            conversationId: convId,
+            role: "user",
+            content: question,
+            timestamp: now,
+          },
+        });
+
         const msgId = crypto.randomUUID();
         await db.messages("insertOne", {
           document: {
@@ -258,8 +563,7 @@ export async function POST(req: NextRequest) {
             conversationId: convId,
             role: "assistant",
             content: fullContent,
-            tokens: Math.ceil(fullContent.length / 4),
-            createdAt: new Date().toISOString(),
+            timestamp: now,
           },
         });
 

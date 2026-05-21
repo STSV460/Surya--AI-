@@ -58,8 +58,8 @@ export default function StudentsSEO() {
         <h2 className="text-white text-xl font-semibold">Why is Surya AI the best AI for students in India?</h2>
         <p>
           Indian students often need AI tools that are not only powerful but also accessible and reliable. 
-          Surya AI provides a premium experience with Claude Sonnet 4.6, allowing you to tackle engineering,
-          humanities, and medical research with ease. Unlike basic chatbots, our multi-agent system can 
+          Surya AI provides a premium Indian chatbot experience, allowing you to tackle engineering,
+          humanities, and medical research with ease. Unlike basic chatbots, our research system can 
           handle long-form research tasks that help you excel in your academic journey.
         </p>
         <p>

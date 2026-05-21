@@ -1,8 +1,9 @@
 import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import type { NextAuthConfig } from "next-auth";
-import { insforgeDb as db } from "@/lib/insforge";
+import { createInsforgeAuthClient, insforgeDb as db } from "@/lib/insforge";
 import { encrypt } from "@/lib/crypto";
 
 // Module augmentation — must live here alongside the NextAuth() call
@@ -21,6 +22,62 @@ declare module "@auth/core/jwt" {
   interface JWT {
     userId?: string;
   }
+}
+
+async function ensureEmailProfile({
+  email,
+  name,
+  image,
+  providerKey,
+}: {
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  providerKey: string;
+}) {
+  const now = new Date().toISOString();
+  const { data: byEmail } = await db
+    .from("profiles")
+    .select("id,username")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (byEmail?.id) {
+    const existingKeys = (byEmail.username ?? "")
+      .split(",")
+      .map((key: string) => key.trim())
+      .filter(Boolean);
+    if (!existingKeys.includes(providerKey)) existingKeys.push(providerKey);
+
+    await db
+      .from("profiles")
+      .update({
+        username: existingKeys.join(","),
+        display_name: name ?? undefined,
+        avatar_url: image ?? undefined,
+        updated_at: now,
+      })
+      .eq("id", byEmail.id);
+
+    return byEmail.id as string;
+  }
+
+  const { data: inserted } = await db
+    .from("profiles")
+    .insert({
+      email,
+      display_name: name ?? "",
+      avatar_url: image ?? "",
+      username: providerKey,
+      role: "user",
+      account_status: "active",
+      created_at: now,
+      updated_at: now,
+    })
+    .select("id")
+    .maybeSingle();
+
+  return (inserted?.id as string | undefined) ?? null;
 }
 
 const config: NextAuthConfig = {
@@ -44,6 +101,44 @@ const config: NextAuthConfig = {
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
       authorization: { params: { scope: "read:user user:email" } },
     }),
+    Credentials({
+      name: "Email",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = String(credentials?.email ?? "").trim().toLowerCase();
+        const password = String(credentials?.password ?? "");
+        if (!email || !password) return null;
+
+        const { data, error } = await createInsforgeAuthClient().auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error || !data?.user?.email) {
+          console.warn("[auth] REJECT email login:", error?.message ?? "missing user");
+          return null;
+        }
+
+        const profileId = await ensureEmailProfile({
+          email: data.user.email,
+          name: data.user.profile?.name ?? data.user.email.split("@")[0],
+          image: data.user.profile?.avatar_url ?? null,
+          providerKey: `email:${data.user.id}`,
+        });
+
+        if (!profileId) return null;
+
+        return {
+          id: profileId,
+          email: data.user.email,
+          name: data.user.profile?.name ?? data.user.email.split("@")[0],
+          image: data.user.profile?.avatar_url ?? null,
+        };
+      },
+    }),
   ],
 
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
@@ -56,6 +151,7 @@ const config: NextAuthConfig = {
   callbacks: {
     async signIn({ user, account, profile }) {
       if (!account || !user.email) return false;
+      if (account.provider === "credentials") return true;
 
       // --- Email verification gate (prevents account takeover) -----------------
       // OAuth providers can return unverified secondary emails. Without this
@@ -105,7 +201,6 @@ const config: NextAuthConfig = {
       }
 
       try {
-        const now = new Date().toISOString();
         const provider = account.provider; // "google" | "github"
         const providerAccountId = String(account.providerAccountId ?? "");
 
@@ -118,51 +213,12 @@ const config: NextAuthConfig = {
         // Acceptable because OAuth providers verify email ownership.
         const providerKey = `${provider}:${providerAccountId}`;
 
-        // Lookup by email (primary key)
-        const { data: byEmail } = await db
-          .from("profiles")
-          .select("id,username")
-          .eq("email", user.email)
-          .maybeSingle();
-
-        let resolvedProfileId: string | null = byEmail?.id ?? null;
-
-        if (resolvedProfileId) {
-          // Existing profile — append this provider key if not already linked
-          const existingKeys = (byEmail!.username ?? "")
-            .split(",")
-            .map((k: string) => k.trim())
-            .filter(Boolean);
-          if (!existingKeys.includes(providerKey)) {
-            existingKeys.push(providerKey);
-          }
-          await db
-            .from("profiles")
-            .update({
-              username: existingKeys.join(","),
-              display_name: user.name ?? undefined,
-              avatar_url: user.image ?? undefined,
-              updated_at: now,
-            })
-            .eq("id", resolvedProfileId);
-        } else {
-          // Brand-new profile
-          const { data: inserted } = await db
-            .from("profiles")
-            .insert({
-              email: user.email,
-              display_name: user.name ?? "",
-              avatar_url: user.image ?? "",
-              username: providerKey,
-              role: "user",
-              account_status: "active",
-              created_at: now,
-              updated_at: now,
-            })
-            .select("id")
-            .maybeSingle();
-          resolvedProfileId = (inserted?.id as string) ?? null;
-        }
+        const resolvedProfileId = await ensureEmailProfile({
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          providerKey,
+        });
 
         // --- Persist OAuth tokens keyed by userId (not email) ------------------
         // Previously keyed by email which leaked credentials across users who
@@ -177,8 +233,8 @@ const config: NextAuthConfig = {
             expires_at: account.expires_at
               ? new Date((account.expires_at as number) * 1000).toISOString()
               : null,
-            updated_at: now,
-            created_at: now,
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
           };
 
           // Prefer upsert on (user_id, provider); if that constraint is not
@@ -212,6 +268,11 @@ const config: NextAuthConfig = {
       // Populate userId on signIn by EMAIL (ChatGPT-style identity).
       // Same email across providers = same profile.
       if (trigger === "signIn" && account && user?.email) {
+        if (account.provider === "credentials" && user.id) {
+          token.userId = user.id;
+          return token;
+        }
+
         try {
           const { data } = await db
             .from("profiles")

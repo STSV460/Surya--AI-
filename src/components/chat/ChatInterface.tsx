@@ -8,7 +8,6 @@ import { useChatStore } from "@/stores/chatStore";
 import { MessageList } from "@/components/chat/MessageList";
 import { InputBar } from "@/components/chat/InputBar";
 import { ArtifactPanel } from "@/components/artifacts/ArtifactPanel";
-import { ResearchProgress } from "@/components/chat/ResearchProgress";
 import { CrewProgress } from "@/components/chat/CrewProgress";
 import { useUIStore } from "@/stores/uiStore";
 import type { Message } from "@/types/chat";
@@ -29,8 +28,6 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     stopStreaming,
     enableConnectors,
     setEnableConnectors,
-    enableWebSearch,
-    setEnableWebSearch,
     enableImageGen,
     setEnableImageGen,
     enableVideoGen,
@@ -45,11 +42,12 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     completedArtifact,
     error: researchError,
     resultConversationId,
+    councilUpdates,
     startResearch,
     reset: resetResearch,
   } = useResearch();
 
-  const { setMessages, setActiveConversation, activeConversationId, addMessage } = useChatStore();
+  const { setMessages, setActiveConversation, activeConversationId, addMessage, messages: storeMessages } = useChatStore();
   const { artifactPanelOpen } = useUIStore();
 
   useEffect(() => {
@@ -59,7 +57,11 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
       return;
     }
 
-    if (conversationId === activeConversationId) return;
+    const currentMessagesLoaded =
+      conversationId === activeConversationId &&
+      storeMessages.length > 0 &&
+      storeMessages.every((message) => message.conversationId === conversationId);
+    if (currentMessagesLoaded) return;
 
     setActiveConversation(conversationId);
 
@@ -115,13 +117,10 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           streamingContent={streamingContent}
           onSend={(content) => sendMessage(content, conversationId)}
           onEditMessage={(messageId, content) => sendMessage(content, conversationId, { editMessageId: messageId })}
-        />
-
-        {/* Deep Research progress — animated stages */}
-        <ResearchProgress
-          stage={researchStage}
-          detail={researchDetail}
-          isRunning={isResearching}
+          researchStage={researchStage}
+          researchDetail={researchDetail}
+          isResearching={isResearching}
+          councilUpdates={councilUpdates}
         />
 
         <CrewProgress events={crewEvents} isRunning={isStreaming} />
@@ -133,20 +132,28 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           </div>
         )}
 
-        <div className={`px-4 pb-5 pt-2 w-full ${artifactPanelOpen ? "max-w-2xl" : "max-w-3xl"} mx-auto`}>
+        <div className={`shrink-0 px-4 pb-5 pt-2 w-full ${artifactPanelOpen ? "max-w-2xl" : "max-w-3xl"} mx-auto`}>
           <InputBar
             onSend={(content) => sendMessage(content, conversationId)}
             onStop={stopStreaming}
             isStreaming={isStreaming || isResearching}
             enableConnectors={enableConnectors}
             onToggleConnectors={() => setEnableConnectors(!enableConnectors)}
-            enableWebSearch={enableWebSearch}
-            onToggleWebSearch={() => setEnableWebSearch(!enableWebSearch)}
             enableImageGen={enableImageGen}
             onToggleImageGen={() => setEnableImageGen(!enableImageGen)}
             enableVideoGen={enableVideoGen}
             onToggleVideoGen={() => setEnableVideoGen(!enableVideoGen)}
-            onDeepResearch={(question) => startResearch(question, conversationId, projectId)}
+            onDeepResearch={(question, councilModels) => {
+              addMessage({
+                id: crypto.randomUUID(),
+                conversationId: conversationId ?? "",
+                role: "user",
+                content: question,
+                artifacts: [],
+                createdAt: new Date().toISOString(),
+              });
+              startResearch(question, conversationId, projectId, councilModels);
+            }}
           />
         </div>
       </div>

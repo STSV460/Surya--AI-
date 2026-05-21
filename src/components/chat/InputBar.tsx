@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ArrowUp, Square, Plus, Plug, Globe, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp } from "lucide-react";
+import { ArrowUp, Square, Plus, Plug, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DEFAULT_RESEARCH_COUNCIL_MODELS, RESEARCH_COUNCIL_MODEL_OPTIONS } from "@/lib/ai/models";
+import type { ResearchCouncilModelId } from "@/types/chat";
 
 interface AttachedFile {
   name: string;
@@ -18,13 +20,11 @@ interface InputBarProps {
   disabled?: boolean;
   enableConnectors?: boolean;
   onToggleConnectors?: () => void;
-  enableWebSearch?: boolean;
-  onToggleWebSearch?: () => void;
   enableImageGen?: boolean;
   onToggleImageGen?: () => void;
   enableVideoGen?: boolean;
   onToggleVideoGen?: () => void;
-  onDeepResearch?: (question: string) => void;
+  onDeepResearch?: (question: string, councilModels: ResearchCouncilModelId[]) => void;
   draftMessage?: { id: number; content: string } | null;
   onDraftConsumed?: () => void;
 }
@@ -36,8 +36,6 @@ export function InputBar({
   disabled,
   enableConnectors,
   onToggleConnectors,
-  enableWebSearch,
-  onToggleWebSearch,
   onDeepResearch,
   draftMessage,
   onDraftConsumed,
@@ -47,6 +45,10 @@ export function InputBar({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [deepResearchEnabled, setDeepResearchEnabled] = useState(false);
+  const [selectedCouncilModels, setSelectedCouncilModels] = useState<ResearchCouncilModelId[]>([
+    ...DEFAULT_RESEARCH_COUNCIL_MODELS,
+  ]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -55,7 +57,7 @@ export function InputBar({
   const canSend = (!!value.trim() || attachments.length > 0) && !disabled;
 
   // Count active tools for badge
-  const activeToolCount = [enableConnectors, enableWebSearch].filter(Boolean).length;
+  const activeToolCount = [enableConnectors, deepResearchEnabled].filter(Boolean).length;
 
   // Close tools popup on outside click
   useEffect(() => {
@@ -92,6 +94,10 @@ export function InputBar({
   function handleSend() {
     const trimmed = value.trim();
     if ((!trimmed && attachments.length === 0) || isStreaming || disabled) return;
+    if (deepResearchEnabled && onDeepResearch && trimmed) {
+      handleDeepResearch();
+      return;
+    }
     let composed = trimmed;
     if (attachments.length > 0) {
       const ctx = attachments
@@ -133,10 +139,19 @@ export function InputBar({
 
   function handleDeepResearch() {
     const q = value.trim();
-    if (!q || isStreaming || disabled || !onDeepResearch) return;
-    onDeepResearch(q);
+    if (!deepResearchEnabled || !q || isStreaming || disabled || !onDeepResearch) return;
+    onDeepResearch(q, selectedCouncilModels);
     setValue("");
     setToolsOpen(false);
+  }
+
+  function toggleCouncilModel(modelId: ResearchCouncilModelId) {
+    setSelectedCouncilModels((current) => {
+      if (current.includes(modelId)) {
+        return current.length <= 1 ? current : current.filter((id) => id !== modelId);
+      }
+      return [...current, modelId];
+    });
   }
 
   return (
@@ -272,61 +287,108 @@ export function InputBar({
                   </button>
                 )}
 
-                {/* Web search */}
-                {onToggleWebSearch && (
-                  <button
-                    type="button"
-                    onClick={() => { onToggleWebSearch(); }}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
-                      enableWebSearch
-                        ? "text-surya-500 bg-surya-500/10"
-                        : "text-gray-400 hover:text-white hover:bg-white/6"
-                    )}
-                  >
-                    <Globe size={14} className="shrink-0" />
-                    <div className="flex-1 text-left">
-                      <p className="text-[13px] font-medium leading-none mb-0.5">Web Search</p>
-                      <p className="text-[11px] text-gray-500 leading-none">Search the web in real-time</p>
-                    </div>
-                    <div className={cn(
-                      "w-7 h-4 rounded-full transition-colors relative shrink-0",
-                      enableWebSearch ? "bg-surya-500" : "bg-white/15"
-                    )}>
-                      <div className={cn(
-                        "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
-                        enableWebSearch ? "left-3.5" : "left-0.5"
-                      )} />
-                    </div>
-                  </button>
-                )}
-
                 {/* Image/Video gen moved to /media — removed from chat */}
 
                 {/* Divider */}
-                {onDeepResearch && (onToggleConnectors || onToggleWebSearch) && (
+                {onDeepResearch && onToggleConnectors && (
                   <div className="h-px bg-white/6 mx-2 my-1.5" />
                 )}
 
                 {/* Deep Research */}
                 {onDeepResearch && (
-                  <button
-                    type="button"
-                    onClick={handleDeepResearch}
-                    disabled={!value.trim() || isStreaming || disabled}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors text-sm",
-                      value.trim() && !isStreaming && !disabled
-                        ? "text-surya-accent hover:bg-surya-accent/10"
-                        : "text-gray-600 cursor-not-allowed"
-                    )}
-                  >
-                    <FlaskConical size={14} className="shrink-0" />
-                    <div className="flex-1 text-left">
-                      <p className="text-[13px] font-medium leading-none mb-0.5">Deep Research</p>
-                      <p className="text-[11px] text-gray-500 leading-none">Multi-source synthesis</p>
+                  <div className="rounded-xl bg-black/10 border border-white/6 p-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeepResearchEnabled((enabled) => !enabled)}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-2 py-2 rounded-lg transition-colors text-sm",
+                        deepResearchEnabled
+                          ? "text-surya-accent bg-surya-accent/10"
+                          : "text-gray-400 hover:text-white hover:bg-white/6"
+                      )}
+                    >
+                      <FlaskConical size={14} className="shrink-0" />
+                      <div className="flex-1 text-left">
+                        <p className="text-[13px] font-medium leading-none mb-0.5">Deep Research</p>
+                        <p className="text-[11px] text-gray-500 leading-none">
+                          {deepResearchEnabled
+                            ? `${selectedCouncilModels.length} model council + web search`
+                            : "Enable model council"}
+                        </p>
+                      </div>
+                      <div className={cn(
+                        "w-7 h-4 rounded-full transition-colors relative shrink-0",
+                        deepResearchEnabled ? "bg-surya-500" : "bg-white/15"
+                      )}>
+                        <div className={cn(
+                          "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+                          deepResearchEnabled ? "left-3.5" : "left-0.5"
+                        )} />
+                      </div>
+                    </button>
+
+                    {deepResearchEnabled && (
+                    <div className="mt-2 pt-2 border-t border-white/6">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider px-2 pb-1.5 font-medium">
+                        Which models for Deep Research?
+                      </p>
+                      <p className="px-2 pb-2 text-[10px] leading-snug text-amber-300/80">
+                        Uses more tokens because selected models search, discuss, and write a final conclusion.
+                      </p>
+                      <div className="max-h-48 overflow-y-auto pr-1">
+                        {RESEARCH_COUNCIL_MODEL_OPTIONS.map((model) => {
+                          const checked = selectedCouncilModels.includes(model.id);
+                          return (
+                            <label
+                              key={model.id}
+                              className={cn(
+                                "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors",
+                                checked ? "bg-surya-500/10 text-white" : "text-gray-400 hover:bg-white/6 hover:text-white"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleCouncilModel(model.id)}
+                                className="sr-only"
+                              />
+                              <span
+                                className={cn(
+                                  "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                                  checked
+                                    ? "bg-surya-500 border-surya-500 text-white"
+                                    : "border-white/20 bg-white/5"
+                                )}
+                              >
+                                {checked && <Check size={11} />}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-[12px] leading-tight truncate">{model.label}</span>
+                                <span className="block text-[10px] leading-tight text-gray-500 truncate">
+                                  {model.provider}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleDeepResearch}
+                        disabled={!value.trim() || isStreaming || disabled}
+                        className={cn(
+                          "mt-2 w-full flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium transition-colors",
+                          value.trim() && !isStreaming && !disabled
+                            ? "bg-surya-500 text-white hover:bg-surya-700"
+                            : "bg-white/6 text-gray-600 cursor-not-allowed"
+                        )}
+                      >
+                        <FlaskConical size={13} />
+                        Start Deep Research
+                      </button>
                     </div>
-                  </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}

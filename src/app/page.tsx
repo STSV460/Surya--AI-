@@ -60,8 +60,8 @@ export default function LandingPage() {
           aria-label="Description"
           className="text-sm text-gray-600 max-w-md"
         >
-          Surya AI is a production-grade AI assistant for deep research, coding, and multi-agent automation.
-          Powered by Claude Sonnet 4.6 & Opus. No prompting expertise required.
+          Surya AI is an Indian AI chatbot for deep research, coding, app building, link summaries, and automation.
+          No prompting expertise required.
         </p>
 
         {/* CTA */}
@@ -109,7 +109,7 @@ export default function LandingPage() {
           <h3>Free AI Tools for Coding</h3>
           <p>
             Build apps instantly with Surya Code. Use the smartest AI for coding and debugging with
-            Claude Sonnet 4.6 integration.
+            advanced coding assistance.
           </p>
         </section>
 

@@ -28,8 +28,24 @@ export type ResearchStage =
   | "generating_queries"
   | "searching"
   | "scraping"
+  | "debating"
   | "synthesizing"
   | "done";
+
+export type ResearchCouncilModelId =
+  | "gpt54"
+  | "opus"
+  | "sonnet"
+  | "gemini";
+
+export interface ResearchCouncilUpdate {
+  id: ResearchCouncilModelId;
+  label: string;
+  provider: string;
+  phase: "reading" | "memo" | "debate" | "chair";
+  status: "thinking" | "done" | "error";
+  content?: string;
+}
 
 export interface Message {
   id: string;
@@ -117,7 +133,7 @@ export interface StreamEvent {
   toolName?: string;
   toolInput?: Record<string, unknown>;
   searchResults?: SearchResult[];
-  researchProgress?: { stage: ResearchStage; detail?: string };
+  researchProgress?: { stage: ResearchStage; detail?: string; council?: ResearchCouncilUpdate };
   crewName?: CrewName | string;
   agents?: { role: string }[];
   agent?: string;
