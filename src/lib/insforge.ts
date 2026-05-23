@@ -113,7 +113,7 @@ function camelKeys(obj: Record<string, any>): Record<string, any> {
 // MongoDB-style wrapper — used by all API routes
 // ---------------------------------------------------------------------------
 
-type Operation = "find" | "findOne" | "insertOne" | "updateOne" | "deleteOne";
+type Operation = "find" | "findOne" | "insertOne" | "updateOne" | "deleteOne" | "deleteMany";
 
 async function dbQuery(
   table: string,
@@ -207,6 +207,29 @@ async function dbQuery(
       let query = client.from(table).delete();
       for (const [key, value] of Object.entries(snakeFilter)) {
         if (value !== undefined && value !== null) {
+          query = query.eq(key, value);
+        }
+      }
+      const { error } = await query;
+      if (error) throw new Error(error.message);
+      return { deleted: true };
+    }
+
+    case "deleteMany": {
+      const { filter = {} } = payload;
+      const snakeFilter = snakeKeys(filter);
+      let query = client.from(table).delete();
+      for (const [key, value] of Object.entries(snakeFilter)) {
+        if (value === undefined || value === null) continue;
+        if (typeof value === "object" && "$gte" in (value as object)) {
+          query = query.gte(key, (value as { $gte: unknown }).$gte);
+        } else if (typeof value === "object" && "$gt" in (value as object)) {
+          query = query.gt(key, (value as { $gt: unknown }).$gt);
+        } else if (typeof value === "object" && "$lte" in (value as object)) {
+          query = query.lte(key, (value as { $lte: unknown }).$lte);
+        } else if (typeof value === "object" && "$lt" in (value as object)) {
+          query = query.lt(key, (value as { $lt: unknown }).$lt);
+        } else {
           query = query.eq(key, value);
         }
       }
