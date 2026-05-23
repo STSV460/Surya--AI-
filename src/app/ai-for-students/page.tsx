@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, GraduationCap, BookOpen, Sparkles } from "lucide-react";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata = {
-  title: "Best Free AI Assistant for Students | Surya AI",
-  description: "Boost your studies with Surya AI. The smartest free AI for academic research, essay planning, and complex problem solving. Used by students in India and worldwide.",
-};
+export const metadata = pageMetadata(
+  "/ai-for-students",
+  "Best Free AI Assistant for Students",
+  "Study faster with Surya AI. Get help with academic research, essay planning, summaries, exam prep, and complex problem solving."
+);
 
 export default function StudentsSEO() {
   return (

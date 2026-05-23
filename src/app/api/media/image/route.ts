@@ -1,6 +1,7 @@
 
 import { auth } from "@/auth";
 import { MODEL_MAP } from "@/lib/ai/client";
+import { extractBrain, getBrainSummary } from "@/lib/brain";
 import { uploadBase64ToBucket, uploadUrlToBucket } from "@/lib/media/storage";
 import { createAsset } from "@/lib/media/assets";
 import { aiLimiter } from "@/lib/rate-limit";
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
   try {
     const model =
       process.env.IMAGE_GEN_MODEL ?? MODEL_MAP.gemini ?? "google/gemini-3-pro-image-preview";
+    const brain = await getBrainSummary(userId, "media").catch(() => "");
+    const effectivePrompt = brain ? `${brain}\n\nImage prompt:\n${prompt}` : prompt;
 
     const baseUrl = process.env.INSFORGE_BASE_URL!;
     const apiKey = process.env.INSFORGE_API_KEY!;
@@ -51,7 +54,7 @@ export async function POST(req: Request) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model, prompt }),
+      body: JSON.stringify({ model, prompt: effectivePrompt }),
       signal: AbortSignal.timeout(240_000),
     });
     if (!upstream.ok) {
@@ -98,6 +101,12 @@ export async function POST(req: Request) {
       storageUrl,
       status: "done",
     });
+    void extractBrain({
+      userId,
+      surface: "media",
+      userMessage: prompt,
+      assistantMessage: "Generated image asset",
+    }).catch((err) => console.warn("[media/image] brain extract failed:", err));
 
     return Response.json({ asset });
   } catch (err) {

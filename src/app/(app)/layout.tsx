@@ -5,8 +5,10 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { UserHydrator } from "@/components/layout/UserHydrator";
 import type { User } from "@/types/user";
 import type { Session } from "next-auth";
+import { privateMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata;
 
 export default async function AppLayout({
   children,

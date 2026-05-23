@@ -1,8 +1,13 @@
 import Link from "next/link";
 
+import { pageMetadata } from "@/lib/seo";
+
 export const metadata = {
-  title: "Terms of Service — Surya AI",
-  description: "Terms of Service for Surya AI — rules for using the platform.",
+  ...pageMetadata(
+    "/terms",
+    "Terms of Service",
+    "Terms of Service for Surya AI, including rules for using the platform."
+  ),
 };
 
 export default function TermsPage() {

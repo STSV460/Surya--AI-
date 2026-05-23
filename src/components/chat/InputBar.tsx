@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ArrowUp, Square, Plus, Plug, FlaskConical, X, FileText, Loader2, Wrench, ChevronUp, Check } from "lucide-react";
+import { ArrowUp, Square, Plus, Plug, FlaskConical, X, Loader2, Wrench, ChevronUp, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DocumentAttachmentCard } from "@/components/shared/DocumentAttachmentCard";
+import { handlePasteAsFile, LONG_PASTE_CHAR_THRESHOLD, LONG_PASTE_LINE_THRESHOLD } from "@/lib/paste-as-file";
 import { DEFAULT_RESEARCH_COUNCIL_MODELS, RESEARCH_COUNCIL_MODEL_OPTIONS } from "@/lib/ai/models";
 import type { ResearchCouncilModelId } from "@/types/chat";
 
@@ -11,6 +13,8 @@ interface AttachedFile {
   size: number;
   content: string;
   truncated?: boolean;
+  mime?: string;
+  lineCount?: number;
 }
 
 interface InputBarProps {
@@ -110,10 +114,8 @@ export function InputBar({
     setAttachments([]);
   }
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  async function uploadFile(file: File, label?: string, attach = true) {
+    if (!file) return null;
     setUploading(true);
     setUploadError(null);
     try {
@@ -123,14 +125,47 @@ export function InputBar({
       const data = await res.json();
       if (!res.ok) {
         setUploadError(data.error ?? "Upload failed");
-        return;
+        return null;
       }
-      setAttachments((a) => [...a, { name: data.name, size: data.size, content: data.content, truncated: data.truncated }]);
+      const attachment = {
+        name: label ?? data.name,
+        size: data.size,
+        content: data.content,
+        truncated: data.truncated,
+        mime: data.mime,
+      };
+      if (attach) setAttachments((a) => [...a, attachment]);
+      return attachment;
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
+      return null;
     } finally {
       setUploading(false);
     }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await uploadFile(file);
+  }
+
+  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    await handlePasteAsFile(e, {
+      thresholdChars: LONG_PASTE_CHAR_THRESHOLD,
+      thresholdNewlines: LONG_PASTE_LINE_THRESHOLD,
+      existingNames: attachments.map((item) => item.name),
+      uploadTextFile: async (file) => {
+        const attachment = await uploadFile(file, file.name, false);
+        if (!attachment) throw new Error("Upload failed");
+        return attachment;
+      },
+      onAttach: (attachment, meta) => {
+        setAttachments((items) => [...items, { ...attachment, lineCount: meta.lines, size: meta.sizeBytes }]);
+      },
+      onError: (error) => setUploadError(error instanceof Error ? error.message : "Upload failed"),
+    });
   }
 
   function removeAttachment(idx: number) {
@@ -161,22 +196,19 @@ export function InputBar({
         "focus-within:border-surya-500/50 focus-within:ring-[3px] focus-within:ring-surya-500/12"
       )}
     >
-      {/* Attachment chips */}
+      {/* Attachment cards */}
       {(attachments.length > 0 || uploading || uploadError) && (
-        <div className="flex flex-wrap gap-2 px-4 pt-3">
+        <div className="flex flex-col gap-2 px-4 pt-3">
           {attachments.map((f, i) => (
-            <div key={i} className="inline-flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg bg-surface-2 border border-white/10 text-xs">
-              <FileText size={12} className="text-surya-accent" />
-              <span className="max-w-[160px] truncate">{f.name}</span>
-              {f.truncated && <span className="text-amber-400 text-[10px]">trunc</span>}
-              <button
-                type="button"
-                onClick={() => removeAttachment(i)}
-                className="p-0.5 rounded hover:bg-white/10 text-gray-500 hover:text-gray-300"
-              >
-                <X size={11} />
-              </button>
-            </div>
+            <DocumentAttachmentCard
+              key={`${f.name}-${i}`}
+              mode="composer"
+              name={f.name}
+              sizeBytes={f.size}
+              lineCount={f.lineCount}
+              subtitle={f.truncated ? "Document · truncated" : "Document"}
+              onRemove={() => removeAttachment(i)}
+            />
           ))}
           {uploading && (
             <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-2 text-xs text-gray-400">
@@ -198,6 +230,7 @@ export function InputBar({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         disabled={disabled}
         placeholder="Message Surya AI"
         rows={1}

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, Code2, Cpu, Zap, Layout } from "lucide-react";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata = {
-  title: "The Ultimate Coding AI Assistant for Developers | Surya AI",
-  description: "Accelerate your development with Surya AI. The Indian AI chatbot for refactoring, debugging, research, and building apps instantly.",
-};
+export const metadata = pageMetadata(
+  "/ai-for-coding",
+  "AI Coding Assistant and App Builder for Developers",
+  "Build, debug, refactor, and research with Surya AI, an AI coding assistant with app building, artifacts, and multi-agent workflows."
+);
 
 export default function CodingSEO() {
   return (

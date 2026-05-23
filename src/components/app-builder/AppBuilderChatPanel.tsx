@@ -5,10 +5,18 @@ import type { Dispatch, SetStateAction } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Zap, Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, FileText, X, Crosshair, Sparkles, ArrowRight, Upload, Settings, Globe2, FolderGit2, Wrench, Trash2 } from "lucide-react";
+import { Send, Loader2, RotateCcw, Square, RefreshCw, AlertCircle, Plus, X, Crosshair, Sparkles, ArrowRight, Upload, Settings, Globe2, FolderGit2, Wrench, Trash2, Terminal, GitPullRequest, Cpu } from "lucide-react";
 import type { UseAppBuilderReturn } from "@/hooks/useAppBuilder";
 import type { WCStatus } from "@/hooks/useWebContainer";
 import { ClarifyQuestions } from "@/components/app-builder/ClarifyQuestions";
+import { AgentTimeline } from "@/components/app-builder/AgentTimeline";
+import { BugWarRoom } from "@/components/app-builder/BugWarRoom";
+import { BuildReplay } from "@/components/app-builder/BuildReplay";
+import { handlePasteAsFile, LONG_PASTE_CHAR_THRESHOLD, LONG_PASTE_LINE_THRESHOLD } from "@/lib/paste-as-file";
+import { PushToGitHub } from "@/components/app-builder/PushToGitHub";
+import { DeployToVercel } from "@/components/app-builder/DeployToVercel";
+import { DocumentAttachmentCard } from "@/components/shared/DocumentAttachmentCard";
+import { parseMessageFileBlocks } from "@/lib/message-file-parser";
 
 interface AttachedFile {
   kind: "text" | "image";
@@ -18,15 +26,16 @@ interface AttachedFile {
   dataUrl?: string;     // base64 data URL for kind=image
   mime?: string;
   truncated?: boolean;
+  lineCount?: number;
 }
 
 const EXAMPLE_PROMPTS = [
-  "Build a calculator with dark theme",
-  "Create a Pomodoro timer app",
-  "Make a responsive landing page",
-  "Build a quiz game about space",
-  "Create a todo app with React",
-  "Make a weather dashboard UI",
+  "Build school attendance app with admin, teacher, student login",
+  "Create SaaS dashboard with billing, teams, and audit logs",
+  "Refactor this UI into a dense operations console",
+  "Fix preview runtime error and explain changed files",
+  "Add auth, database schema, and protected routes",
+  "Prepare GitHub push and Vercel deploy checklist",
 ];
 
 interface CustomSkill {
@@ -393,11 +402,11 @@ function CodeSettingsModal({
 }
 
 const STATUS_PILL: Partial<Record<WCStatus, { label: string; color: string }>> = {
-  booting:    { label: "Booting container...", color: "text-yellow-400" },
-  installing: { label: "Installing dependencies...", color: "text-yellow-400" },
-  starting:   { label: "Starting dev server...", color: "text-blue-400" },
-  ready:      { label: "● Live", color: "text-green-400" },
-  error:      { label: "Error", color: "text-red-400" },
+  booting:    { label: "Booting container", color: "text-[#7dd3fc]" },
+  installing: { label: "Installing deps", color: "text-[#7dd3fc]" },
+  starting:   { label: "Starting server", color: "text-[#8fb7ff]" },
+  ready:      { label: "● Live", color: "text-[#78c679]" },
+  error:      { label: "Error", color: "text-[#ff8f8f]" },
 };
 
 type Props = UseAppBuilderReturn;
@@ -417,6 +426,31 @@ function AssistantDots() {
   );
 }
 
+function UserMessageBubble({ content }: { content: string }) {
+  const parsed = parseMessageFileBlocks(content);
+  return (
+    <div className="max-w-[90%] space-y-2">
+      {parsed.attachments.map((attachment, index) => (
+        <DocumentAttachmentCard
+          key={`${attachment.name}-${index}`}
+          mode="message"
+          name={attachment.name}
+          content={attachment.content}
+          sizeBytes={attachment.sizeBytes}
+          lineCount={attachment.lineCount}
+          subtitle={attachment.truncated ? "Document · truncated" : "Document"}
+          className="bg-[#111f38]"
+        />
+      ))}
+      {parsed.visibleText && (
+        <div className="rounded-md border border-[#2a3b5f] bg-[#172033] px-3 py-2 text-sm text-[#e5edf8] whitespace-pre-wrap">
+          {parsed.visibleText}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppBuilderChatPanel({
   messages,
   isStreaming,
@@ -429,9 +463,12 @@ export function AppBuilderChatPanel({
   stopGeneration,
   retry,
   buildFromPlan,
+  fixBug,
   reset,
+  buildError,
   projectId,
   projectName,
+  files,
   selectedElement,
   setSelectedElement,
 }: Props) {
@@ -448,10 +485,10 @@ export function AppBuilderChatPanel({
   const globalSettingsKey = "surya-code-settings:global";
   const projectSettingsKey = `surya-code-settings:project:${projectId ?? "draft"}`;
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = async (file: File, attach = true) => {
     if (file.size > 5 * 1024 * 1024) {
       setUploadError("File > 5MB");
-      return;
+      return null;
     }
     setUploading(true);
     setUploadError(null);
@@ -462,20 +499,36 @@ export function AppBuilderChatPanel({
       const data = await res.json();
       if (!res.ok) {
         setUploadError(data.error ?? "Upload failed");
-        return;
+        return null;
       }
       const att: AttachedFile = data.kind === "image"
         ? { kind: "image", name: data.name, size: data.size, mime: data.mime, dataUrl: data.dataUrl }
         : { kind: "text", name: data.name, size: data.size, mime: data.mime, content: data.content, truncated: data.truncated };
-      setAttachments((a) => [...a, att]);
+      if (attach) setAttachments((a) => [...a, att]);
+      return att;
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
+      return null;
     } finally {
       setUploading(false);
     }
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
+    await handlePasteAsFile(e as React.ClipboardEvent<HTMLTextAreaElement>, {
+      thresholdChars: LONG_PASTE_CHAR_THRESHOLD,
+      thresholdNewlines: LONG_PASTE_LINE_THRESHOLD,
+      existingNames: attachments.map((item) => item.name),
+      uploadTextFile: async (file) => {
+        const attachment = await uploadFile(file, false);
+        if (!attachment || attachment.kind !== "text") throw new Error("Upload failed");
+        return attachment;
+      },
+      onAttach: (attachment, meta) => {
+        setAttachments((items) => [...items, { ...attachment, name: attachment.name, lineCount: meta.lines, size: meta.sizeBytes }]);
+      },
+      onError: (error) => setUploadError(error instanceof Error ? error.message : "Upload failed"),
+    });
     const items = e.clipboardData?.items;
     if (!items) return;
     for (const item of Array.from(items)) {
@@ -558,6 +611,12 @@ export function AppBuilderChatPanel({
 
     let finalPrompt = text;
 
+    if (text.startsWith("/") && attachments.length === 0 && !selectedElement) {
+      setAttachments([]);
+      sendMessage(text, undefined, text);
+      return;
+    }
+
     if (selectedElement) {
       finalPrompt = `${selectedElement}\n\nUser request: ${text || "(fix this element)"}`;
       setSelectedElement(null);
@@ -605,7 +664,7 @@ export function AppBuilderChatPanel({
 
   return (
     <div
-      className="relative flex flex-col h-full bg-surface-DEFAULT overflow-hidden"
+      className="relative flex flex-col h-full bg-[#0b1220] overflow-hidden text-[#dbeafe]"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -629,19 +688,38 @@ export function AppBuilderChatPanel({
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 flex-shrink-0 bg-surface-1">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#23314d] flex-shrink-0 bg-[#111827]">
         <div className="flex items-center gap-2">
-          <Zap size={16} className="text-surya-500" />
-          <span className="text-sm font-semibold text-white">Code</span>
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-surya-500/20 text-surya-500 border border-surya-500/30">
-            Beta
+          <Terminal size={16} className="text-[#3b82f6]" />
+          <span className="text-sm font-semibold text-[#e5edf8]">Surya Code</span>
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-[#1e3a5f] text-[#7dd3fc] border border-[#2b4774]">
+            Opus 4.6
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-[#172033] text-[#93a4bd] border border-[#23314d]">
+            <Cpu size={10} />
+            coding expert
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {Object.keys(files).length > 0 && (
+            <>
+              <PushToGitHub files={files} />
+              <DeployToVercel files={files} />
+            </>
+          )}
+          {buildError && (
+            <button
+            onClick={() => fixBug(buildError)}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#2563eb] px-2 text-[11px] text-[#7dd3fc] hover:bg-[#1d4f8f]"
+            >
+              <Wrench size={12} />
+              Fix bug
+            </button>
+          )}
           <button
             onClick={() => setSettingsOpen(true)}
             title="Code settings"
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/8 px-2 text-[11px] text-gray-400 hover:border-surya-500/40 hover:text-white"
+            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#2a3b5f] px-2 text-[11px] text-[#94a3b8] hover:border-[#3b82f6] hover:text-[#e5edf8]"
           >
             <Settings size={12} />
             Settings
@@ -650,7 +728,7 @@ export function AppBuilderChatPanel({
             <button
               onClick={reset}
               title="Start over"
-              className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/5 rounded transition-colors"
+              className="p-1.5 text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f] rounded transition-colors"
             >
               <RotateCcw size={13} />
             </button>
@@ -659,34 +737,43 @@ export function AppBuilderChatPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-[#0b1220]">
         <AnimatePresence initial={false}>
           {!hasMessages ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center h-full gap-6 pb-8"
+              className="flex h-full flex-col justify-between gap-6 pb-2"
             >
-              <div className="flex flex-col items-center gap-2 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-surya-500/10 border border-surya-500/20 flex items-center justify-center">
-                  <Zap size={22} className="text-surya-500" />
+              <div className="pt-8">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md border border-[#2b4774] bg-[#172033]">
+                    <GitPullRequest size={16} className="text-[#3b82f6]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#e5edf8]">New coding session</p>
+                    <p className="text-xs text-[#64748b]">Opus 4.6 plans, edits, tests, and reviews.</p>
+                  </div>
                 </div>
-                <p className="text-sm font-medium text-white">Describe what to build</p>
-                <p className="text-xs text-gray-500 max-w-[200px]">
-                  Build any web app with AI. Iterate with follow-up messages.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-2 w-full">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#64748b]">Suggested tasks</p>
+              <div className="grid grid-cols-1 gap-1.5 w-full">
                 {EXAMPLE_PROMPTS.map((p) => (
                   <button
                     key={p}
                     onClick={() => sendMessage(buildIdePrompt(codeSettings, p), undefined, p)}
-                    className="text-left text-xs text-gray-400 hover:text-white bg-surface-2 hover:bg-surface-2/80 border border-white/5 hover:border-white/10 rounded-lg px-3 py-2 transition-all"
+                    className="group flex items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-left text-[13px] text-[#cbd5e1] transition-all hover:border-[#2a3b5f] hover:bg-[#172033] hover:text-[#e5edf8]"
                   >
-                    {p}
+                    <span className="h-1.5 w-1.5 rounded-full border border-[#64748b] group-hover:border-[#3b82f6]" />
+                    <span className="truncate">{p}</span>
                   </button>
                 ))}
+              </div>
+              </div>
+              <div className="rounded-md border border-[#23314d] bg-[#111827] px-3 py-2 text-[11px] text-[#94a3b8]">
+                <span className="text-[#7dd3fc]">Bypass permissions</span>
+                <span className="mx-2 text-[#475569]">+</span>
+                Local workspace · Opus 4.6 · High
               </div>
             </motion.div>
           ) : (
@@ -701,9 +788,7 @@ export function AppBuilderChatPanel({
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "user" ? (
-                  <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-surface-2 border border-white/5 px-3 py-2 text-sm text-white">
-                    {msg.content}
-                  </div>
+                  <UserMessageBubble content={msg.content} />
                 ) : msg.kind === "clarify" && msg.questions ? (
                   <div className="max-w-[92%] w-full">
                     <ClarifyQuestions
@@ -717,7 +802,7 @@ export function AppBuilderChatPanel({
                     />
                   </div>
                 ) : (
-                  <div className="max-w-[92%] text-sm text-gray-300 space-y-2">
+                  <div className="max-w-[96%] text-sm text-[#dbeafe] space-y-2">
                     {msg.error && (
                       <div className="flex items-center gap-1.5 text-red-400 text-xs">
                         <AlertCircle size={12} />
@@ -726,14 +811,14 @@ export function AppBuilderChatPanel({
                     )}
                     {(msg.plan || (msg.isStreaming && typeof msg.thoughtSeconds === "number")) && (
                       <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                          <Sparkles size={10} className="text-surya-500" />
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#64748b]">
+                          <Sparkles size={10} className="text-[#3b82f6]" />
                           <span>
                             Thought for {msg.thoughtSeconds ?? elapsedSeconds}s
                           </span>
                         </div>
                         {msg.plan && (
-                          <p className="text-[13px] text-gray-200 leading-relaxed">
+                          <p className="text-[13px] text-[#dbeafe] leading-relaxed">
                             {msg.plan}
                           </p>
                         )}
@@ -743,15 +828,18 @@ export function AppBuilderChatPanel({
                       <AssistantDots />
                     ) : (
                       msg.content && (
-                        <div className={`text-[12px] text-gray-400 ${msg.error ? "text-red-300" : ""}`}>
+                        <div className={`text-[12px] text-[#a8b6ce] ${msg.error ? "text-red-300" : ""}`}>
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {msg.content}
                           </ReactMarkdown>
                         </div>
                       )
                     )}
+                    <AgentTimeline events={msg.agentEvents} />
+                    <BugWarRoom events={msg.warRoomEvents} />
+                    <BuildReplay replay={msg.replay} />
                     {msg.isStreaming && (
-                      <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                      <div className="flex items-center gap-2 text-[11px] text-[#64748b]">
                         <Loader2 size={10} className="animate-spin" />
                         <span>Generating… {elapsedSeconds}s</span>
                       </div>
@@ -767,7 +855,7 @@ export function AppBuilderChatPanel({
                     )}
                     {msg.followUps && msg.followUps.length > 0 && !msg.isStreaming && (
                       <div className="pt-2 space-y-1.5">
-                        <p className="text-[10px] uppercase tracking-wide text-gray-600">
+                        <p className="text-[10px] uppercase tracking-wide text-[#64748b]">
                           Try next
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -780,7 +868,7 @@ export function AppBuilderChatPanel({
                                   : sendMessage(buildIdePrompt(codeSettings, s), undefined, s)
                               }
                               disabled={isStreaming}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-2 hover:bg-surya-500/10 border border-white/10 hover:border-surya-500/40 text-[11px] text-gray-300 hover:text-surya-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="inline-flex items-center gap-1 rounded-md border border-[#2a3b5f] bg-[#111827] px-2.5 py-1 text-[11px] text-[#cbd5e1] transition-all hover:border-[#3b82f6] hover:text-[#e5edf8] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {s}
                               <ArrowRight size={10} />
@@ -800,7 +888,7 @@ export function AppBuilderChatPanel({
       </div>
 
       {/* Input */}
-      <div className="flex-shrink-0 p-3 border-t border-white/5 bg-surface-1 space-y-2">
+      <div className="flex-shrink-0 p-3 border-t border-[#23314d] bg-[#111827] space-y-2">
         {pill && (
           <div className={`text-[11px] font-medium text-center ${pill.color}`}>
             {pill.label}
@@ -809,9 +897,9 @@ export function AppBuilderChatPanel({
 
         {/* Element selection banner */}
         {selectedElement && (
-          <div className="flex items-start gap-2 px-2.5 py-2 bg-surya-500/10 border border-surya-500/20 rounded-lg">
-            <Crosshair size={12} className="text-surya-500 mt-0.5 shrink-0" />
-            <span className="text-[11px] text-gray-300 flex-1 line-clamp-2 leading-relaxed">{selectedElement}</span>
+          <div className="flex items-start gap-2 rounded-md border border-[#2563eb] bg-[#102447] px-2.5 py-2">
+            <Crosshair size={12} className="text-[#7dd3fc] mt-0.5 shrink-0" />
+            <span className="text-[11px] text-[#dbeafe] flex-1 line-clamp-2 leading-relaxed">{selectedElement}</span>
             <button
               onClick={() => setSelectedElement(null)}
               className="p-0.5 text-gray-500 hover:text-gray-200 rounded"
@@ -821,9 +909,9 @@ export function AppBuilderChatPanel({
           </div>
         )}
 
-        {/* Attachment chips */}
+        {/* Attachment cards */}
         {(attachments.length > 0 || uploading || uploadError) && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-col gap-2">
             {attachments.map((f, i) => (
               f.kind === "image" && f.dataUrl ? (
                 <div key={i} className="relative group">
@@ -841,17 +929,15 @@ export function AppBuilderChatPanel({
                   </button>
                 </div>
               ) : (
-                <div key={i} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-surface-2 border border-white/10 text-xs">
-                  <FileText size={11} className="text-surya-accent" />
-                  <span className="max-w-[120px] truncate text-[11px]">{f.name}</span>
-                  {f.truncated && <span className="text-amber-400 text-[10px]">trunc</span>}
-                  <button
-                    onClick={() => setAttachments((a) => a.filter((_, idx) => idx !== i))}
-                    className="p-0.5 rounded hover:bg-white/10 text-gray-500 hover:text-gray-300"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
+                <DocumentAttachmentCard
+                  key={`${f.name}-${i}`}
+                  mode="composer"
+                  name={f.name}
+                  sizeBytes={f.size}
+                  lineCount={f.lineCount}
+                  subtitle={f.truncated ? "Document · truncated" : "Document"}
+                  onRemove={() => setAttachments((a) => a.filter((_, idx) => idx !== i))}
+                />
               )
             ))}
             {uploading && (
@@ -868,14 +954,14 @@ export function AppBuilderChatPanel({
           </div>
         )}
 
-        <div className="flex items-end gap-2 bg-surface-2 border border-white/10 rounded-xl px-3 py-2 focus-within:border-surya-500/40 transition-colors">
+        <div className="flex items-end gap-2 rounded-md border border-[#334b75] bg-[#172033] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-[#3b82f6]">
           {/* File attach button */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             title="Attach file"
-            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors disabled:opacity-40"
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f] transition-colors disabled:opacity-40"
           >
             <Plus size={14} />
           </button>
@@ -895,20 +981,20 @@ export function AppBuilderChatPanel({
             onPaste={handlePaste}
             placeholder={
               selectedElement
-                ? "What should I fix about this element?"
+              ? "What should I fix about this element?"
                 : hasMessages
-                ? "What should I change?"
-                : "Describe the app you want to build..."
+                ? "Describe next edit..."
+                : "Describe a task or ask a question"
             }
             rows={1}
-            className="flex-1 bg-transparent text-sm text-white placeholder:text-gray-500 resize-none outline-none max-h-32 overflow-y-auto"
+            className="flex-1 bg-transparent text-sm text-[#e5edf8] placeholder:text-[#64748b] resize-none outline-none max-h-32 overflow-y-auto"
             style={{ minHeight: "24px" }}
           />
           {isStreaming ? (
             <button
               onClick={stopGeneration}
               title="Stop generation"
-              className="flex-shrink-0 w-7 h-7 rounded-lg bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-all"
+              className="flex-shrink-0 w-7 h-7 rounded-md bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-all"
             >
               <Square size={11} className="text-white fill-white" />
             </button>
@@ -916,14 +1002,14 @@ export function AppBuilderChatPanel({
             <button
               onClick={handleSend}
               disabled={!input.trim() && attachments.length === 0 && !selectedElement}
-              className="flex-shrink-0 w-7 h-7 rounded-lg bg-surya-500 hover:bg-surya-500/80 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all"
+              className="flex-shrink-0 w-7 h-7 rounded-md bg-[#3b82f6] hover:bg-[#60a5fa] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all"
             >
               <Send size={13} className="text-white" />
             </button>
           )}
         </div>
-        <p className="text-[10px] text-gray-600 text-center">
-          Enter to send · Shift+Enter for newline
+        <p className="text-[10px] text-[#64748b] text-center">
+          Enter to send · Shift+Enter newline · Opus 4.6 via InsForge Gateway
         </p>
       </div>
     </div>

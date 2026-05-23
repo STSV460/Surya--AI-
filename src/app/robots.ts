@@ -1,15 +1,25 @@
 import type { MetadataRoute } from "next";
+import { PUBLIC_ROUTES, SITE_URL } from "@/lib/seo";
 
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.suryaai.in";
   return {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/chat", "/research", "/agent", "/media", "/app-builder", "/projects"],
-        disallow: ["/api/", "/settings", "/profile"],
+        allow: PUBLIC_ROUTES.map((route) => route.path || "/"),
+        disallow: [
+          "/api/",
+          "/chat",
+          "/projects",
+          "/media",
+          "/app-builder",
+          "/crew-builder",
+          "/settings",
+          "/login",
+          "/profile",
+        ],
       },
     ],
-    sitemap: `${base}/sitemap.xml`,
+    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }

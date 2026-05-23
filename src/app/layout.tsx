@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL, siteJsonLd } from "@/lib/seo";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -15,14 +16,17 @@ const dmMono = DM_Mono({
   weight: ["300", "400", "500"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.suryaai.in";
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Surya AI — The Smartest Free AI Chatbot for Students & Devs",
-  description:
-    "Surya AI is an Indian AI chatbot for students, developers, and creators. Chat, research, build apps, summarize links, and automate tasks in one place.",
+  title: {
+    default: SITE_TITLE,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
   keywords: [
+    "Surya AI",
+    "suryaai.in",
+    "SuryaAI",
     "free AI chatbot",
     "Indian AI chatbot",
     "AI assistant for students",
@@ -33,19 +37,32 @@ export const metadata: Metadata = {
     "free AI chat India",
   ],
   authors: [{ name: "Surya AI Team" }],
-  creator: "Surya AI",
+  creator: SITE_NAME,
+  applicationName: SITE_NAME,
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     locale: "en_IN",
     url: SITE_URL,
-    title: "Surya AI — The AI that thinks with you",
-    description: "Indian AI chatbot for chat, research, app building, link summaries, and automation.",
-    siteName: "Surya AI",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    siteName: SITE_NAME,
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Surya AI website preview",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Surya AI — The Smartest Free AI Chatbot",
-    description: "Indian AI chatbot for students, developers, and creators.",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ["/twitter-image.png"],
   },
   robots: {
     index: true,
@@ -78,6 +95,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()).replace(/</g, "\\u003c") }}
+        />
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

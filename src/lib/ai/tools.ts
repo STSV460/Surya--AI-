@@ -14,6 +14,56 @@ export const CONNECTOR_TOOLS = [
   {
     type: "function",
     function: {
+      name: "workspace_action",
+      description: "Run Google Workspace power-pack actions: admin, forms, script, tasks, or chat.",
+      parameters: {
+        type: "object",
+        properties: {
+          surface: { type: "string", enum: ["admin", "forms", "script", "tasks", "chat"] },
+          op: { type: "string" },
+          args: { type: "object" },
+        },
+        required: ["surface", "op"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "github_push",
+      description: "Push generated Surya Code files to a GitHub repository after user confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          repoName: { type: "string" },
+          private: { type: "boolean" },
+          files: { type: "object" },
+          commitMessage: { type: "string" },
+          branch: { type: "string" },
+        },
+        required: ["repoName", "files", "commitMessage"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "vercel_deploy",
+      description: "Deploy generated Surya Code files to Vercel after user confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          files: { type: "object" },
+          target: { type: "string", enum: ["production", "preview"] },
+        },
+        required: ["name", "files"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "gmail_search",
       description:
         "Search the user's Gmail inbox for emails matching a query. Returns a list of matching email summaries.",
@@ -358,6 +408,9 @@ export const TOOL_METADATA = {
   drive_read:             { path: "/api/connectors/drive",         action: "read",         kind: "read",  requiresConfirmation: false },
   calendar_list_events:   { path: "/api/connectors/calendar",      action: "list_events",  kind: "read",  requiresConfirmation: false },
   docs_read:              { path: "/api/connectors/docs",          action: "read",         kind: "read",  requiresConfirmation: false },
+  workspace_action:       { path: "/api/connectors/workspace/tasks", action: "proxy",      kind: "read",  requiresConfirmation: false },
+  github_push:            { path: "/api/connectors/github/push",   action: "push",         kind: "write", requiresConfirmation: true },
+  vercel_deploy:          { path: "/api/connectors/vercel/deploy", action: "deploy",       kind: "write", requiresConfirmation: true },
   github_list_repos:      { path: "/api/connectors/github",        action: "list_repos",   kind: "read",  requiresConfirmation: false },
   github_list_issues:     { path: "/api/connectors/github",        action: "list_issues",  kind: "read",  requiresConfirmation: false },
   image_gen:              { path: "/api/image-gen",                action: "generate",     kind: "write", requiresConfirmation: true },
@@ -438,8 +491,21 @@ export async function executeTool(
       input.query = query;
       if (typeof input.limit !== "number") input.limit = 8;
     }
+    let path: string = route.path;
+    if (toolName === "workspace_action") {
+      const surface = typeof input.surface === "string" ? input.surface : "tasks";
+      if (!["admin", "forms", "script", "tasks", "chat"].includes(surface)) {
+        return JSON.stringify({ error: "Invalid workspace surface" });
+      }
+      path = `/api/connectors/workspace/${surface}`;
+      input.action = input.op;
+      if (input.args && typeof input.args === "object") Object.assign(input, input.args);
+      delete input.args;
+      delete input.op;
+      delete input.surface;
+    }
 
-    const res = await fetch(`${getAppUrl()}${route.path}`, {
+    const res = await fetch(`${getAppUrl()}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

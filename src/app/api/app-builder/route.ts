@@ -1,5 +1,7 @@
 import { auth } from "@/auth";
 import { aiClient, MODEL_MAP } from "@/lib/ai/client";
+import { getBrainSummary } from "@/lib/brain";
+import { runBugWarRoom, runSuryaCodePipeline } from "@/lib/agents/orchestrator";
 import { formatMemoryBlock, recallUserMemory, rememberIfExplicit } from "@/lib/memory";
 import { aiLimiter } from "@/lib/rate-limit";
 import { parseJson, isResponse } from "@/lib/validation";
@@ -8,7 +10,7 @@ import { z } from "zod";
 export const maxDuration = 300;
 
 const appBuilderSchema = z.object({
-  mode: z.enum(["plan", "generate", "edit", "clarify", "followups"]).optional().default("generate"),
+  mode: z.enum(["plan", "generate", "edit", "clarify", "followups", "surya_code", "bug_war_room"]).optional().default("generate"),
   prompt: z.string().trim().min(1).max(30_000),
   projectId: z.string().trim().min(1).max(160).optional(),
   currentFiles: z.record(z.string().max(240), z.string().max(250_000)).optional().default({}),
@@ -389,6 +391,10 @@ export async function POST(req: Request) {
       ? "clarify"
       : body.mode === "followups"
       ? "followups"
+      : body.mode === "surya_code"
+      ? "surya_code"
+      : body.mode === "bug_war_room"
+      ? "bug_war_room"
       : "generate";
   const prompt = body.prompt?.trim();
   if (!prompt) return Response.json({ error: "prompt is required" }, { status: 400 });
@@ -412,6 +418,12 @@ export async function POST(req: Request) {
     );
   } catch (err) {
     console.warn("[app-builder] memory recall failed:", err);
+  }
+  let brainBlock = "";
+  try {
+    brainBlock = await getBrainSummary(userId, "code");
+  } catch (err) {
+    console.warn("[app-builder] brain summary failed:", err);
   }
   const webContextBlock = await buildWebContextBlock(prompt);
 
@@ -455,7 +467,7 @@ export async function POST(req: Request) {
       const completion = await (aiClient.chat.completions.create as any)({
         model: MODEL_MAP.opus,
         messages: [
-          { role: "system", content: `${PLAN_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${webContextBlock}${MCP_SYSTEM_NOTE}` },
+          { role: "system", content: `${PLAN_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${brainBlock}${webContextBlock}${MCP_SYSTEM_NOTE}` },
           {
             role: "user",
             content: `Plan this app idea. Default stack: ${simple ? "Vanilla HTML/CSS/JS" : "React/Vite"}.\n\n${prompt}`,
@@ -523,6 +535,26 @@ export async function POST(req: Request) {
       }, 8000);
 
       try {
+        if (mode === "surya_code" || mode === "bug_war_room") {
+          const emitEvent = (event: object) => emit(controller, event);
+          const ctx = {
+            prompt,
+            currentFiles: body.currentFiles,
+            clarifyAnswers: body.clarifyAnswers,
+            chatHistory: body.chatHistory,
+            brainSummary: brainBlock,
+            webContext: webContextBlock,
+          };
+          if (mode === "bug_war_room") {
+            await runBugWarRoom(ctx, emitEvent);
+          } else {
+            await runSuryaCodePipeline(ctx, emitEvent);
+          }
+          clearInterval(heartbeat);
+          controller.close();
+          return;
+        }
+
         let systemPrompt: string;
         let userContent: string;
         let previewMode: "srcdoc" | "webcontainer";
@@ -532,12 +564,12 @@ export async function POST(req: Request) {
           const chatHistory = body.chatHistory ?? [];
           const hasPackageJson = "package.json" in currentFiles;
           previewMode = hasPackageJson ? "webcontainer" : "srcdoc";
-          systemPrompt = `${hasPackageJson ? WEBCONTAINER_SYSTEM_PROMPT : SIMPLE_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${webContextBlock}${MCP_SYSTEM_NOTE}`;
+          systemPrompt = `${hasPackageJson ? WEBCONTAINER_SYSTEM_PROMPT : SIMPLE_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${brainBlock}${webContextBlock}${MCP_SYSTEM_NOTE}`;
           userContent = buildEditPrompt(prompt, currentFiles, chatHistory);
         } else {
           const simple = isSimpleApp(prompt);
           previewMode = simple ? "srcdoc" : "webcontainer";
-          systemPrompt = `${simple ? SIMPLE_SYSTEM_PROMPT : WEBCONTAINER_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${webContextBlock}${MCP_SYSTEM_NOTE}`;
+          systemPrompt = `${simple ? SIMPLE_SYSTEM_PROMPT : WEBCONTAINER_SYSTEM_PROMPT}${FACTUAL_APP_NOTE}${memoryBlock}${brainBlock}${webContextBlock}${MCP_SYSTEM_NOTE}`;
           const ans = body.clarifyAnswers ?? {};
           const ansLines = Object.entries(ans)
             .filter(([, v]) => typeof v === "string" && v.trim())
@@ -574,8 +606,7 @@ export async function POST(req: Request) {
         // production apps → Opus 4.6 (deeper reasoning, longer context).
         // Edit mode always uses Opus since edits to existing code benefit
         // from deeper reasoning over the existing files.
-        const builderModel =
-          mode === "edit" ? MODEL_MAP.opus : isSimpleApp(prompt) ? MODEL_MAP.sonnet : MODEL_MAP.opus;
+        const builderModel = MODEL_MAP.opus;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const completion = await (aiClient.chat.completions.create as any)({

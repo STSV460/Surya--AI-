@@ -39,6 +39,7 @@ export async function POST(req: Request) {
     files: {},
     messages: [],
     previewMode: "none",
+    workspaceState: null,
     createdAt: now,
     updatedAt: now,
   };

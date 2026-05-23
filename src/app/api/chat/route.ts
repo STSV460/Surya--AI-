@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { aiClient, MODEL_MAP, MAX_TOKENS, THINKING_BUDGET } from "@/lib/ai/client";
+import { extractBrain, getBrainSummary } from "@/lib/brain";
 import { selectModel } from "@/lib/ai/models";
 import { CONNECTOR_TOOLS_WITHOUT_SEARCH, WEB_SEARCH_TOOLS, executeTool } from "@/lib/ai/tools";
 import { db, insforgeDb } from "@/lib/insforge";
@@ -579,6 +580,7 @@ Fetch failed: ${msg}
   ];
 
   const memorySurface = projectId ? "project" : "chat";
+  const brainSurface = projectId ? "projects" : "chat";
   void rememberIfExplicit(userId, message, {
     surface: memorySurface,
     projectId,
@@ -597,6 +599,12 @@ Fetch failed: ${msg}
     );
   } catch (err) {
     console.warn("[chat] memory recall failed:", err);
+  }
+  let brainBlock = "";
+  try {
+    brainBlock = await getBrainSummary(userId, brainSurface);
+  } catch (err) {
+    console.warn("[chat] brain summary failed:", err);
   }
 
   // Build project context
@@ -704,7 +712,7 @@ You are helpful, clear, and direct. For code, documents, or interactive content,
 
 If the user asks about a URL and the message contains <fetched_url_content>, use that fetched content as primary context. Do not say you cannot access the URL unless the fetched block explicitly says fetch failed or no readable text was available. If only related web results are available, summarize those and clearly say direct transcript/page text was unavailable.
 
-For product links from Amazon, Flipkart, Myntra, Meesho, or other stores, explain what the product page contains: product name, brand, price, rating, reviews, available offers, delivery/return details, sizes/colors, key specifications, visible pros/cons, and buying advice. If a field is not visible in fetched content, say "not shown" instead of inventing it.${connectorNote}${userContext}${memoryBlock}`;
+For product links from Amazon, Flipkart, Myntra, Meesho, or other stores, explain what the product page contains: product name, brand, price, rating, reviews, available offers, delivery/return details, sizes/colors, key specifications, visible pros/cons, and buying advice. If a field is not visible in fetched content, say "not shown" instead of inventing it.${connectorNote}${userContext}${memoryBlock}${brainBlock}`;
 
   const systemPrompt = projectContext ? `${projectContext}\n\n---\n\n${basePrompt}` : basePrompt;
 
@@ -936,6 +944,14 @@ For product links from Amazon, Flipkart, Myntra, Meesho, or other stores, explai
             timestamp: new Date().toISOString(),
           },
         });
+
+        void extractBrain({
+          userId,
+          surface: brainSurface,
+          userMessage: message,
+          assistantMessage: fullContent,
+          sourceMsgId: assistantMsgId,
+        }).catch((err) => console.warn("[chat] brain extract failed:", err));
 
         // Persist artifacts
         for (const artifact of allArtifacts) {

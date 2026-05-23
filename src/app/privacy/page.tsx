@@ -1,8 +1,13 @@
 import Link from "next/link";
 
+import { pageMetadata } from "@/lib/seo";
+
 export const metadata = {
-  title: "Privacy Policy — Surya AI",
-  description: "Privacy Policy for Surya AI — how we collect, use, and protect your data.",
+  ...pageMetadata(
+    "/privacy",
+    "Privacy Policy",
+    "Privacy Policy for Surya AI, including how data is collected, used, and protected."
+  ),
 };
 
 export default function PrivacyPage() {

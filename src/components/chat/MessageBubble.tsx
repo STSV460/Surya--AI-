@@ -27,6 +27,8 @@ import { StreamingText } from "./StreamingText";
 import type { Message, ArtifactType } from "@/types/chat";
 import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
+import { parseMessageFileBlocks } from "@/lib/message-file-parser";
+import { DocumentAttachmentCard } from "@/components/shared/DocumentAttachmentCard";
 
 const ARTIFACT_ICONS = {
   code: Code2,
@@ -302,6 +304,7 @@ export const MessageBubble = memo(function MessageBubble({
   const [editValue, setEditValue] = useState("");
   const isUser = message.role === "user";
   const displayContent = isStreaming ? streamingContent : message.content;
+  const parsedFiles = isUser ? parseMessageFileBlocks(displayContent) : { visibleText: displayContent, attachments: [] };
 
   useEffect(() => {
     return () => {
@@ -554,7 +557,23 @@ export const MessageBubble = memo(function MessageBubble({
             </div>
           </div>
         ) : isUser ? (
-          <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{displayContent}</p>
+          <div className="space-y-2">
+            {parsedFiles.attachments.map((attachment, index) => (
+              <DocumentAttachmentCard
+                key={`${attachment.name}-${index}`}
+                mode="message"
+                name={attachment.name}
+                content={attachment.content}
+                sizeBytes={attachment.sizeBytes}
+                lineCount={attachment.lineCount}
+                subtitle={attachment.truncated ? "Document · truncated" : "Document"}
+                className="bg-[#111f38]"
+              />
+            ))}
+            {parsedFiles.visibleText && (
+              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{parsedFiles.visibleText}</p>
+            )}
+          </div>
         ) : (
           <div className="prose prose-invert max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-transparent prose-pre:p-0">
             {isStreaming ? (

@@ -284,7 +284,7 @@ export function Sidebar() {
           )}
         >
           <Code2 size={15} />
-          Code
+          Surya Code
         </Link>
       </div>
 

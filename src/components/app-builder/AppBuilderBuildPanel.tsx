@@ -20,6 +20,10 @@ import {
   Monitor,
   Crosshair,
   AlertTriangle,
+  GitCompare,
+  Terminal,
+  ListChecks,
+  ClipboardList,
 } from "lucide-react";
 import { PreviewPane } from "@/components/app-builder/PreviewPane";
 import type { UseAppBuilderReturn } from "@/hooks/useAppBuilder";
@@ -64,8 +68,6 @@ export function AppBuilderBuildPanel({
   activeFile,
   setActiveFile,
   editFile,
-  buildTab,
-  setBuildTab,
   previewMode,
   srcdocHtml,
   viewport,
@@ -75,7 +77,10 @@ export function AppBuilderBuildPanel({
   wcTerminalOutput,
   setSelectedElement,
   buildError,
+  workspaceState,
+  setWorkspaceView,
 }: Props) {
+  const activeView = workspaceState.activeView;
   const fileList = Object.keys(files).sort((a, b) => {
     // Root files first, then by path. Prioritize index.html / package.json / src/App.* at top.
     const priorityOf = (p: string) => {
@@ -96,10 +101,10 @@ export function AppBuilderBuildPanel({
 
   // Auto-select first file when entering code tab with nothing selected
   useEffect(() => {
-    if (buildTab === "code" && !activeFile && fileList.length > 0) {
+    if (activeView === "files" && !activeFile && fileList.length > 0) {
       setActiveFile(fileList[0]);
     }
-  }, [buildTab, activeFile, fileList, setActiveFile]);
+  }, [activeView, activeFile, fileList, setActiveFile]);
 
   const activeContent = activeFile ? (files[activeFile] ?? "") : "";
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -141,30 +146,37 @@ export function AppBuilderBuildPanel({
   }, [setSelectedElement]);
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0c10] overflow-hidden">
+    <div className="flex flex-col h-full bg-[#0b1220] overflow-hidden text-[#dbeafe]">
       {/* Tab bar */}
-      <div className="flex items-center justify-between px-3 border-b border-white/5 bg-surface-1 flex-shrink-0 h-10">
+      <div className="flex items-center justify-between px-3 border-b border-[#23314d] bg-[#111827] flex-shrink-0 h-10">
         <div className="flex items-center gap-1">
-          {(["preview", "code"] as const).map((tab) => (
+          {([
+            { key: "preview", label: "Preview", icon: Eye },
+            { key: "diff", label: "Diff", icon: GitCompare },
+            { key: "terminal", label: "Terminal", icon: Terminal },
+            { key: "files", label: "Files", icon: Code2 },
+            { key: "tasks", label: "Background tasks", icon: ListChecks },
+            { key: "plan", label: "Plan", icon: ClipboardList },
+          ] as const).map(({ key, label, icon: Icon }) => (
             <button
-              key={tab}
-              onClick={() => setBuildTab(tab)}
+              key={key}
+              onClick={() => setWorkspaceView(key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
-                buildTab === tab
-                  ? "bg-surface-2 text-white"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                activeView === key
+                  ? "bg-[#1e3a5f] text-[#e5edf8]"
+                  : "text-[#64748b] hover:text-[#dbeafe] hover:bg-[#172033]"
               }`}
             >
-              {tab === "preview" ? <Eye size={12} /> : <Code2 size={12} />}
-              {tab === "preview" ? "Preview" : "Code"}
+              <Icon size={12} />
+              <span className="hidden xl:inline">{label}</span>
             </button>
           ))}
         </div>
 
         {/* Right actions */}
         <div className="flex items-center gap-1">
-          {buildTab === "preview" && previewMode !== "none" && (
-            <div className="flex items-center gap-0.5 mr-1 p-0.5 rounded-md bg-surface-2 border border-white/5">
+          {activeView === "preview" && previewMode !== "none" && (
+            <div className="flex items-center gap-0.5 mr-1 p-0.5 rounded-md bg-[#172033] border border-[#23314d]">
               {([
                 { key: "mobile", icon: Smartphone, label: "Mobile (375px)" },
                 { key: "tablet", icon: Tablet, label: "Tablet (768px)" },
@@ -176,8 +188,8 @@ export function AppBuilderBuildPanel({
                   title={label}
                   className={`p-1 rounded transition-colors ${
                     viewport === key
-                      ? "bg-surya-500/20 text-surya-500"
-                      : "text-gray-500 hover:text-white hover:bg-white/5"
+                      ? "bg-[#1d4f8f] text-[#7dd3fc]"
+                      : "text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f]"
                   }`}
                 >
                   <Icon size={12} />
@@ -185,15 +197,15 @@ export function AppBuilderBuildPanel({
               ))}
             </div>
           )}
-          {buildTab === "preview" && previewMode === "srcdoc" && srcdocHtml && (
+          {activeView === "preview" && previewMode === "srcdoc" && srcdocHtml && (
             <>
               <button
                 onClick={() => setIsSelectMode((v) => !v)}
                 title={isSelectMode ? "Cancel element pick" : "Pick element to fix"}
                 className={`p-1.5 rounded transition-colors ${
                   isSelectMode
-                    ? "text-surya-500 bg-surya-500/20 hover:bg-surya-500/30"
-                    : "text-gray-500 hover:text-white hover:bg-white/5"
+                    ? "text-[#7dd3fc] bg-[#1d4f8f] hover:bg-[#1e40af]"
+                    : "text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f]"
                 }`}
               >
                 <Crosshair size={13} />
@@ -201,7 +213,7 @@ export function AppBuilderBuildPanel({
               <button
                 onClick={handleReloadSrcdoc}
                 title="Reload preview"
-                className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded transition-colors"
+                className="p-1.5 text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f] rounded transition-colors"
               >
                 <RefreshCw size={13} />
               </button>
@@ -212,17 +224,17 @@ export function AppBuilderBuildPanel({
                   window.open(url, "_blank");
                 }}
                 title="Open in new tab"
-                className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded transition-colors"
+                className="p-1.5 text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f] rounded transition-colors"
               >
                 <ExternalLink size={13} />
               </button>
             </>
           )}
-          {buildTab === "preview" && previewMode === "webcontainer" && wcPreviewUrl && (
+          {activeView === "preview" && previewMode === "webcontainer" && wcPreviewUrl && (
             <button
               onClick={() => window.open(wcPreviewUrl, "_blank")}
               title="Open in new tab"
-              className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded transition-colors"
+              className="p-1.5 text-[#64748b] hover:text-[#e5edf8] hover:bg-[#1e3a5f] rounded transition-colors"
             >
               <ExternalLink size={13} />
             </button>
@@ -243,7 +255,7 @@ export function AppBuilderBuildPanel({
       {/* Content */}
       <div className="flex-1 min-h-0 relative">
         <AnimatePresence mode="wait">
-          {buildTab === "preview" ? (
+          {activeView === "preview" ? (
             <motion.div
               key="preview"
               initial={{ opacity: 0 }}
@@ -255,9 +267,9 @@ export function AppBuilderBuildPanel({
               {previewMode === "none" ? (
                 <EmptyPreview />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-[#05070a] p-2">
+                <div className="w-full h-full flex items-center justify-center bg-[#070d18] p-3">
                   <div
-                    className="h-full bg-white transition-all duration-200 overflow-hidden rounded-lg shadow-2xl"
+                    className="h-full bg-white transition-all duration-200 overflow-hidden rounded-md shadow-[0_20px_80px_rgba(0,0,0,0.45)] ring-1 ring-[#23314d]"
                     style={{
                       width: VIEWPORT_WIDTH[viewport],
                       maxWidth: "100%",
@@ -282,7 +294,7 @@ export function AppBuilderBuildPanel({
                 </div>
               )}
             </motion.div>
-          ) : (
+          ) : activeView === "files" ? (
             <motion.div
               key="code"
               initial={{ opacity: 0 }}
@@ -296,7 +308,7 @@ export function AppBuilderBuildPanel({
               ) : (
                 <>
                   {/* File tabs */}
-                  <div className="flex overflow-x-auto scrollbar-none border-b border-white/5 bg-[#0d0f14] flex-shrink-0 h-9">
+                  <div className="flex overflow-x-auto scrollbar-none border-b border-[#23314d] bg-[#111827] flex-shrink-0 h-9">
                     {fileList.map((path) => {
                       const name = path.split("/").pop() ?? path;
                       const isActive = activeFile === path;
@@ -307,8 +319,8 @@ export function AppBuilderBuildPanel({
                           title={path}
                           className={`flex items-center gap-1.5 px-3 text-xs whitespace-nowrap border-r border-white/5 transition-all flex-shrink-0 h-full ${
                             isActive
-                              ? "text-white bg-surface-2 border-b-2 border-b-surya-500"
-                              : "text-gray-500 hover:text-gray-200 hover:bg-white/5"
+                              ? "text-[#e5edf8] bg-[#1e3a5f] border-b-2 border-b-[#3b82f6]"
+                              : "text-[#64748b] hover:text-[#dbeafe] hover:bg-[#172033]"
                           }`}
                         >
                           {getFileIcon(name)}
@@ -344,7 +356,7 @@ export function AppBuilderBuildPanel({
                         }}
                       />
                     ) : (
-                      <div className="flex items-center justify-center h-full text-xs text-gray-600">
+                      <div className="flex items-center justify-center h-full text-xs text-[#64748b]">
                         Select a file to edit
                       </div>
                     )}
@@ -352,6 +364,14 @@ export function AppBuilderBuildPanel({
                 </>
               )}
             </motion.div>
+          ) : activeView === "diff" ? (
+            <DiffView files={files} baseFiles={workspaceState.diffBaseFiles} checkpoints={workspaceState.checkpoints} />
+          ) : activeView === "terminal" ? (
+            <TerminalView terminalOutput={wcTerminalOutput} history={workspaceState.terminalHistory} />
+          ) : activeView === "tasks" ? (
+            <BackgroundTasksView tasks={workspaceState.backgroundTasks} securityReplay={workspaceState.securityReplay} />
+          ) : (
+            <PlanView workspaceState={workspaceState} />
           )}
         </AnimatePresence>
       </div>
@@ -359,15 +379,184 @@ export function AppBuilderBuildPanel({
   );
 }
 
+function changedPaths(files: Record<string, string>, baseFiles: Record<string, string>) {
+  return Array.from(new Set([...Object.keys(files), ...Object.keys(baseFiles)])).filter(
+    (path) => files[path] !== baseFiles[path]
+  ).sort();
+}
+
+function DiffView({
+  files,
+  baseFiles,
+  checkpoints,
+}: {
+  files: Record<string, string>;
+  baseFiles: Record<string, string>;
+  checkpoints: Array<{ id: string; label: string; files: Record<string, string>; createdAt: string }>;
+}) {
+  const base = Object.keys(baseFiles).length > 0 ? baseFiles : checkpoints[0]?.files ?? {};
+  const paths = changedPaths(files, base);
+  return (
+    <motion.div key="diff" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 overflow-y-auto bg-[#070d18] p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[#e5edf8]">Diff</p>
+          <p className="text-xs text-[#64748b]">Current files compared with diff base or latest checkpoint.</p>
+        </div>
+        <span className="rounded-md border border-[#24436f] bg-[#111f38] px-2 py-1 text-xs text-[#7dd3fc]">{paths.length} changed</span>
+      </div>
+      {paths.length === 0 ? (
+        <EmptyPanel title="No diff yet" detail="Create a checkpoint or edit files to see changes." />
+      ) : (
+        <div className="space-y-3">
+          {paths.map((path) => {
+            const before = base[path] ?? "";
+            const after = files[path] ?? "";
+            return (
+              <div key={path} className="overflow-hidden rounded-lg border border-[#23314d] bg-[#0f1b31]">
+                <div className="border-b border-[#23314d] px-3 py-2 text-xs font-medium text-[#dbeafe]">{path}</div>
+                <div className="grid gap-px bg-[#23314d] md:grid-cols-2">
+                  <pre className="max-h-72 overflow-auto bg-[#0b1220] p-3 text-[11px] leading-relaxed text-[#94a3b8]">{before || "(new file)"}</pre>
+                  <pre className="max-h-72 overflow-auto bg-[#07182d] p-3 text-[11px] leading-relaxed text-[#bfdbfe]">{after || "(deleted)"}</pre>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function TerminalView({ terminalOutput, history }: { terminalOutput: string; history: Array<Record<string, unknown>> }) {
+  return (
+    <motion.div key="terminal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 flex flex-col bg-[#050b15]">
+      <div className="border-b border-[#23314d] bg-[#111827] px-4 py-3">
+        <p className="text-sm font-semibold text-[#e5edf8]">Controlled terminal</p>
+        <p className="text-xs text-[#64748b]">WebContainer logs only. Host shell disabled in V1.</p>
+      </div>
+      <pre className="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed text-[#93c5fd]">
+        {[
+          ...history.map((entry) => `[${String(entry.createdAt ?? "now")}] ${String(entry.message ?? entry.command ?? JSON.stringify(entry))}`),
+          terminalOutput,
+        ].filter(Boolean).join("\n") || "No terminal logs yet. Run build, preview, or controlled commands."}
+      </pre>
+    </motion.div>
+  );
+}
+
+function BackgroundTasksView({
+  tasks,
+  securityReplay,
+}: {
+  tasks: Array<{ id: string; title: string; owner: string; status: string; risk?: string; result?: string; filesTouched?: string[] }>;
+  securityReplay: Array<{ id: string; action: string; command?: string; permissionChoice?: string; createdAt: string }>;
+}) {
+  return (
+    <motion.div key="tasks" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 overflow-y-auto bg-[#070d18] p-4">
+      <p className="text-sm font-semibold text-[#e5edf8]">Background tasks</p>
+      <p className="mb-4 text-xs text-[#64748b]">Agent board, Bug War Room, QA, scans, deploy jobs, and security replay.</p>
+      <div className="grid gap-3 xl:grid-cols-2">
+        {(tasks.length ? tasks : [{ id: "empty", title: "No active tasks", owner: "surya", status: "queued", risk: "low", result: "Use slash commands like /qa, /scan, /review, /repo." }]).map((task) => (
+          <div key={task.id} className="rounded-lg border border-[#23314d] bg-[#0f1b31] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-[#e5edf8]">{task.title}</p>
+              <span className="rounded bg-[#1e3a5f] px-2 py-0.5 text-[10px] uppercase text-[#7dd3fc]">{task.status}</span>
+            </div>
+            <p className="mt-1 text-xs text-[#8aa4c8]">Owner: {task.owner} · Risk: {task.risk ?? "low"}</p>
+            {task.result && <p className="mt-2 text-xs text-[#cbd5e1]">{task.result}</p>}
+          </div>
+        ))}
+      </div>
+      {securityReplay.length > 0 && (
+        <div className="mt-5 rounded-lg border border-[#24436f] bg-[#0f1b31] p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#7dd3fc]">Security replay</p>
+          <div className="space-y-2">
+            {securityReplay.map((event) => (
+              <div key={event.id} className="text-xs text-[#94a3b8]">{event.action} {event.command ? `· ${event.command}` : ""} {event.permissionChoice ? `· ${event.permissionChoice}` : ""}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function PlanView({ workspaceState }: { workspaceState: Props["workspaceState"] }) {
+  const q = workspaceState.qualityScore;
+  const score = Number(q.overall ?? 0);
+  return (
+    <motion.div key="plan" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 overflow-y-auto bg-[#070d18] p-4">
+      <div className="grid gap-4 xl:grid-cols-3">
+        <div className="rounded-lg border border-[#23314d] bg-[#0f1b31] p-4">
+          <p className="text-sm font-semibold text-[#e5edf8]">Plan</p>
+          <p className="mt-2 text-xs leading-relaxed text-[#94a3b8]">PM/reviewer plan, next steps, Build Replay, repo rules, and future local handoff live here.</p>
+        </div>
+        <div className="rounded-lg border border-[#23314d] bg-[#0f1b31] p-4">
+          <p className="text-sm font-semibold text-[#e5edf8]">Quality score</p>
+          <p className="mt-3 text-3xl font-semibold text-[#7dd3fc]">{score || "--"}</p>
+          <p className="mt-1 text-xs text-[#64748b]">Build · Security · Testing · Performance · Accessibility</p>
+        </div>
+        <div className="rounded-lg border border-[#23314d] bg-[#0f1b31] p-4">
+          <p className="text-sm font-semibold text-[#e5edf8]">Cost meter</p>
+          <p className="mt-2 text-xs text-[#94a3b8]">Model: {String(workspaceState.costMeter.model ?? "Opus 4.6")}</p>
+          <p className="mt-1 text-xs text-[#94a3b8]">Tokens: {String(workspaceState.costMeter.tokens ?? 0)}</p>
+          <p className="mt-1 text-xs text-[#94a3b8]">Files changed: {String(workspaceState.costMeter.filesChanged ?? 0)}</p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <ListPanel title="Routines" items={workspaceState.routines} />
+        <ListPanel title="Skills" items={workspaceState.skills} />
+        <ListPanel title="MCPs" items={workspaceState.mcps} empty="No MCPs connected." />
+        <ListPanel title="Custom agents" items={workspaceState.customAgents} />
+        <ListPanel title="Hooks" items={workspaceState.hooks} />
+        <ListPanel title="Future roadmap" items={[
+          { label: "Desktop Bridge" },
+          { label: "Local CLI" },
+          { label: "IDE extension" },
+          { label: "Cloud-to-local handoff" },
+          { label: "iPad/mobile remote" },
+          { label: "Surya Swarm Mode" },
+          { label: "Marketplace" },
+        ]} />
+      </div>
+    </motion.div>
+  );
+}
+
+function ListPanel({ title, items, empty = "No items yet." }: { title: string; items: Array<Record<string, unknown>>; empty?: string }) {
+  return (
+    <div className="rounded-lg border border-[#23314d] bg-[#0f1b31] p-4">
+      <p className="mb-3 text-sm font-semibold text-[#e5edf8]">{title}</p>
+      <div className="space-y-2">
+        {(items.length ? items : [{ label: empty }]).map((item, index) => (
+          <div key={String(item.id ?? item.label ?? index)} className="rounded-md border border-[#23314d] bg-[#0b1220] px-3 py-2 text-xs text-[#94a3b8]">
+            {String(item.label ?? item.title ?? item.name ?? empty)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmptyPanel({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center">
+      <p className="text-sm font-medium text-[#cbd5e1]">{title}</p>
+      <p className="mt-1 text-xs text-[#64748b]">{detail}</p>
+    </div>
+  );
+}
+
 function EmptyPreview() {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-white/5 flex items-center justify-center">
-        <Zap size={24} className="text-surya-500/50" />
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-center bg-[#070d18]">
+      <div className="w-14 h-14 rounded-md bg-[#172033] border border-[#23314d] flex items-center justify-center">
+        <Zap size={24} className="text-[#3b82f6]/70" />
       </div>
       <div>
-        <p className="text-sm font-medium text-gray-400">Preview will appear here</p>
-        <p className="text-xs text-gray-600 mt-1">Describe your app in the chat</p>
+        <p className="text-sm font-medium text-[#cbd5e1]">Preview will appear here</p>
+        <p className="text-xs text-[#64748b] mt-1">Describe task in Surya Code</p>
       </div>
     </div>
   );
@@ -376,7 +565,7 @@ function EmptyPreview() {
 function EmptyCode() {
   return (
     <div className="flex items-center justify-center h-full">
-      <div className="flex items-center gap-2 text-xs text-gray-600">
+      <div className="flex items-center gap-2 text-xs text-[#64748b]">
         <Loader2 size={13} className="animate-spin" />
         Waiting for code generation...
       </div>

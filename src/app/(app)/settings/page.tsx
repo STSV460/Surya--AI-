@@ -2,8 +2,9 @@
 
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { User, Palette, Bot, Save, Plug, ArrowLeft, LogOut, Brain, Trash2 } from "lucide-react";
+import { User, Palette, Bot, Save, Plug, ArrowLeft, LogOut, Brain, Trash2, FileText } from "lucide-react";
 import { signIn, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const [saved, setSaved] = useState(false);
   const [connectorToast, setConnectorToast] = useState<string | null>(null);
+  const [alwaysPasteAsFile, setAlwaysPasteAsFile] = useState(false);
 
   // Show feedback after returning from Google Workspace OAuth
   useEffect(() => {
@@ -88,6 +90,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     refreshConnectorStatus();
+    setAlwaysPasteAsFile(window.localStorage.getItem("surya:always-paste-as-file") === "1");
   }, []);
 
   // Memory state — ChatGPT-style persistent memories
@@ -156,6 +159,7 @@ export default function SettingsPage() {
         body: JSON.stringify({ profile, preferences }),
       });
       if (res.ok) {
+        window.localStorage.setItem("surya:always-paste-as-file", alwaysPasteAsFile ? "1" : "0");
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       }
@@ -308,6 +312,27 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-300">
+            <FileText size={14} />
+            Input
+          </div>
+          <div className="bg-surface-1 border border-white/8 rounded-xl p-5">
+            <label className="flex items-center justify-between gap-4 text-sm text-gray-300">
+              <span>
+                <span className="block text-white">Always paste as file</span>
+                <span className="text-xs text-gray-500">Long pastes already become attachments automatically.</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={alwaysPasteAsFile}
+                onChange={(event) => setAlwaysPasteAsFile(event.target.checked)}
+                className="h-4 w-4"
+              />
+            </label>
+          </div>
+        </section>
+
         {/* Connected Accounts */}
         <section className="space-y-4">
           <div className="flex items-center gap-2 text-sm font-medium text-gray-300">
@@ -358,6 +383,18 @@ export default function SettingsPage() {
             Memory
           </div>
           <div className="bg-surface-1 border border-white/8 rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-surface-2 px-3 py-2">
+              <div>
+                <p className="text-sm font-medium text-white">Surya Skill Brain</p>
+                <p className="text-xs text-gray-500">Review extracted memories, paused items, and skills.</p>
+              </div>
+              <Link
+                href="/settings/memory"
+                className="shrink-0 rounded-lg bg-surya-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-surya-700"
+              >
+                Manage
+              </Link>
+            </div>
             {memoriesLoading ? (
               <Skeleton className="h-12 w-full rounded-lg" />
             ) : memories.length === 0 ? (

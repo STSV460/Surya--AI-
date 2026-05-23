@@ -1,6 +1,7 @@
 
 import { auth } from "@/auth";
 import { aiClient } from "@/lib/ai/client";
+import { extractBrain, getBrainSummary } from "@/lib/brain";
 import { createClient } from "@insforge/sdk";
 import { aiLimiter } from "@/lib/rate-limit";
 import { parseJson, isResponse } from "@/lib/validation";
@@ -62,6 +63,8 @@ export async function POST(req: Request) {
   try {
     const imageClient = getImageGenClient();
     const model = process.env.IMAGE_GEN_MODEL ?? "google/gemini-3-pro-image-preview";
+    const brain = await getBrainSummary(session.user.id, "media").catch(() => "");
+    const effectivePrompt = brain ? `${brain}\n\nImage prompt:\n${prompt}` : prompt;
 
     // Use native InsForge images.generate — replaces the broken
     // chat.completions + response_modalities approach (SDK silently dropped
@@ -73,11 +76,17 @@ export async function POST(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response: any = await (imageClient as any).images.generate({
       model,
-      prompt,
+      prompt: effectivePrompt,
     });
 
     const first = response?.data?.[0];
     if (first?.b64_json) {
+      void extractBrain({
+        userId: session.user.id,
+        surface: "media",
+        userMessage: prompt,
+        assistantMessage: "Generated image",
+      }).catch((err) => console.warn("[image-gen] brain extract failed:", err));
       return Response.json({ imageUrl: `data:image/png;base64,${first.b64_json}` });
     }
     // Some providers may also return a hosted URL directly

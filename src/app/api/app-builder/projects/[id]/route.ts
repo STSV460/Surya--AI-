@@ -11,6 +11,7 @@ type ProjectDoc = {
   files?: Record<string, string>;
   messages?: unknown[];
   previewMode?: string;
+  workspaceState?: unknown;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -20,6 +21,7 @@ const updateAppProjectSchema = z.object({
   files: z.record(z.string().max(240), z.string().max(250_000)).optional(),
   messages: z.array(z.unknown()).max(200).optional(),
   previewMode: z.enum(["none", "srcdoc", "webcontainer"]).optional(),
+  workspaceState: z.unknown().optional(),
 });
 
 async function loadOwned(id: string, userId: string) {
@@ -57,6 +59,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (body.files && typeof body.files === "object") update.files = body.files;
   if (Array.isArray(body.messages)) update.messages = body.messages;
   if (typeof body.previewMode === "string") update.previewMode = body.previewMode;
+  if (body.workspaceState !== undefined) update.workspaceState = body.workspaceState;
 
   await db.appBuilderProjects("updateOne", {
     filter: { id, userId: session.user.id },
