@@ -24,6 +24,8 @@ interface InputBarProps {
   disabled?: boolean;
   enableConnectors?: boolean;
   onToggleConnectors?: () => void;
+  enableWebSearch?: boolean;
+  onToggleWebSearch?: () => void;
   enableImageGen?: boolean;
   onToggleImageGen?: () => void;
   enableVideoGen?: boolean;

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Conversation, CrewName, CrewProgressEvent, Message } from "@/types/chat";
+import type { Conversation, Message } from "@/types/chat";
 
 interface ChatStore {
   conversations: Conversation[];
@@ -11,29 +11,29 @@ interface ChatStore {
   thinkingEnabled: boolean;
   /** When true, Claude is given tool definitions to call Google/GitHub connectors */
   enableConnectors: boolean;
+  /** When true, the chat API will perform web search before responding */
+  enableWebSearch: boolean;
   /** When true, chat generates images from the user's prompt */
   enableImageGen: boolean;
   /** When true, chat attempts video generation (experimental) */
   enableVideoGen: boolean;
-  enableCrew: boolean;
-  crewMode: CrewName;
-  crewEvents: CrewProgressEvent[];
 
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversation: (id: string | null) => void;
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
-  replaceFromEditedMessage: (messageId: string, content: string) => void;
+  /**
+   * ChatGPT-style edit: replace the message at `messageId` with `newContent`
+   * and drop every message after it (forks the conversation).
+   */
+  replaceMessageAndTruncate: (messageId: string, newContent: string) => void;
   updateStreamingContent: (content: string) => void;
   setIsStreaming: (isStreaming: boolean) => void;
   setThinkingEnabled: (enabled: boolean) => void;
   setEnableConnectors: (enabled: boolean) => void;
+  setEnableWebSearch: (enabled: boolean) => void;
   setEnableImageGen: (enabled: boolean) => void;
   setEnableVideoGen: (enabled: boolean) => void;
-  setEnableCrew: (enabled: boolean) => void;
-  setCrewMode: (mode: CrewName) => void;
-  resetCrewEvents: () => void;
-  addCrewEvent: (event: CrewProgressEvent) => void;
   resetStream: () => void;
 }
 
@@ -43,35 +43,29 @@ export const useChatStore = create<ChatStore>((set) => ({
   messages: [],
   isStreaming: false,
   streamingContent: "",
-  thinkingEnabled: true,
+  thinkingEnabled: false,
   enableConnectors: false,
+  enableWebSearch: false,
   enableImageGen: false,
   enableVideoGen: false,
-  enableCrew: false,
-  crewMode: "research",
-  crewEvents: [],
 
   setConversations: (conversations) => set({ conversations }),
   setActiveConversation: (id) => set({ activeConversationId: id }),
   setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
-  replaceFromEditedMessage: (messageId, content) =>
+  replaceMessageAndTruncate: (messageId, newContent) =>
     set((s) => {
-      const index = s.messages.findIndex((message) => message.id === messageId);
-      if (index === -1) return s;
-      const next = s.messages.slice(0, index + 1);
-      next[index] = { ...next[index], content };
-      return { messages: next };
+      const idx = s.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return s;
+      const updated = { ...s.messages[idx], content: newContent };
+      return { messages: [...s.messages.slice(0, idx), updated] };
     }),
   updateStreamingContent: (content) => set({ streamingContent: content }),
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setThinkingEnabled: (thinkingEnabled) => set({ thinkingEnabled }),
   setEnableConnectors: (enableConnectors) => set({ enableConnectors }),
+  setEnableWebSearch: (enableWebSearch) => set({ enableWebSearch }),
   setEnableImageGen: (enableImageGen) => set({ enableImageGen }),
   setEnableVideoGen: (enableVideoGen) => set({ enableVideoGen }),
-  setEnableCrew: (enableCrew) => set({ enableCrew }),
-  setCrewMode: (crewMode) => set({ crewMode }),
-  resetCrewEvents: () => set({ crewEvents: [] }),
-  addCrewEvent: (event) => set((s) => ({ crewEvents: [...s.crewEvents, event] })),
   resetStream: () => set({ streamingContent: "", isStreaming: false }),
 }));

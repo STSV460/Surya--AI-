@@ -1,34 +1,18 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import {
-  ChevronDown,
-  ChevronRight,
-  Brain,
-  Code2,
-  FileText,
-  Play,
-  Sparkles,
-  Copy,
-  Check,
-  RotateCcw,
-  Pencil,
-  Volume2,
-  VolumeX,
-  Loader2,
-  X,
+  ChevronDown, ChevronRight, Brain, Code2, FileText, Play, Sparkles,
+  Copy, Check, Volume2, VolumeX, Edit3, FileOutput, Loader2,
 } from "lucide-react";
 import { CitationCard } from "./CitationCard";
-import { CrewProgress } from "./CrewProgress";
 import { StreamingText } from "./StreamingText";
 import type { Message, ArtifactType } from "@/types/chat";
 import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
-import { parseMessageFileBlocks } from "@/lib/message-file-parser";
-import { DocumentAttachmentCard } from "@/components/shared/DocumentAttachmentCard";
 
 const ARTIFACT_ICONS = {
   code: Code2,
@@ -57,203 +41,6 @@ function CopyCodeButton({ code }: { code: string }) {
   );
 }
 
-function pickPreferredVoice(voices: SpeechSynthesisVoice[]) {
-  const normalized = (value: string) => value.toLowerCase();
-  const englishVoices = voices.filter((voice) => normalized(voice.lang).startsWith("en"));
-  const candidates = englishVoices.length > 0 ? englishVoices : voices;
-  const badVoicePattern =
-    /whisper|novelty|bells|boing|bubbles|cellos|deranged|hysterical|pipe|princess|trinoids|zarvox|bahh|organ|good news|bad news|jester|superstar|albert|fred|junior|ralph|reed|rocko|shelley|sandy|grandma|grandpa|flo|eddy/i;
-  const preferredNames = [
-    "samantha",
-    "ava",
-    "allison",
-    "victoria",
-    "karen",
-    "moira",
-    "tessa",
-    "veena",
-    "rishi",
-    "google us english",
-    "google uk english female",
-    "microsoft aria",
-    "microsoft jenny",
-    "microsoft emma",
-    "microsoft guy",
-    "daniel",
-  ];
-
-  const cleanCandidates = candidates.filter((voice) => !badVoicePattern.test(voice.name));
-  const scored = cleanCandidates.map((voice) => {
-    const name = normalized(voice.name);
-    const lang = normalized(voice.lang);
-    let score = 0;
-
-    const preferredIndex = preferredNames.findIndex((preferred) => name.includes(preferred));
-    if (preferredIndex >= 0) score += 100 - preferredIndex;
-    if (lang === "en-us") score += 20;
-    if (lang === "en-in") score += 18;
-    if (lang === "en-gb") score += 16;
-    if (lang.startsWith("en-")) score += 10;
-    if (/natural|premium|enhanced|neural|google|microsoft|samantha|ava|allison|joanna|aria|jenny|emma|olivia|daniel|karen|victoria|moira|tessa|veena/i.test(voice.name)) {
-      score += 30;
-    }
-    if (/female|woman|samantha|ava|allison|joanna|aria|jenny|emma|olivia|karen|victoria|moira|tessa|veena/i.test(name)) score += 8;
-    if (!voice.localService) score += 4;
-
-    return { voice, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.voice ?? cleanCandidates[0] ?? candidates[0] ?? null;
-}
-
-let activeSpeechId = 0;
-
-function stopSpeech() {
-  activeSpeechId += 1;
-  window.speechSynthesis.onvoiceschanged = null;
-  window.speechSynthesis.cancel();
-  // Chrome can leave an utterance queued after rapid toggles. Second cancel
-  // clears that queue without changing user-visible behavior.
-  window.setTimeout(() => window.speechSynthesis.cancel(), 0);
-}
-
-function splitSpeechText(text: string) {
-  const sentences = text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) ?? [text];
-  const chunks: string[] = [];
-  let current = "";
-
-  for (const sentence of sentences) {
-    const next = `${current} ${sentence}`.trim();
-    if (next.length > 900 && current) {
-      chunks.push(current);
-      current = sentence.trim();
-    } else {
-      current = next;
-    }
-  }
-
-  if (current) chunks.push(current);
-  return chunks.length > 0 ? chunks : [text];
-}
-
-function waitForVoices() {
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length > 0) return Promise.resolve(voices);
-
-  return new Promise<SpeechSynthesisVoice[]>((resolve) => {
-    const timer = window.setTimeout(() => {
-      window.speechSynthesis.onvoiceschanged = null;
-      resolve(window.speechSynthesis.getVoices());
-    }, 800);
-
-    window.speechSynthesis.onvoiceschanged = () => {
-      window.clearTimeout(timer);
-      window.speechSynthesis.onvoiceschanged = null;
-      resolve(window.speechSynthesis.getVoices());
-    };
-  });
-}
-
-function speakWithBetterVoice(text: string, voices: SpeechSynthesisVoice[], onDone: () => void, onError: (message: string) => void) {
-  stopSpeech();
-  const speechId = activeSpeechId;
-  const voice = pickPreferredVoice(voices);
-  const chunks = splitSpeechText(text);
-  let index = 0;
-  let started = false;
-  const resumeTimer = window.setInterval(() => {
-    if (speechId !== activeSpeechId || !window.speechSynthesis.speaking) {
-      window.clearInterval(resumeTimer);
-      return;
-    }
-    window.speechSynthesis.resume();
-  }, 350);
-
-  const speakNext = () => {
-    if (speechId !== activeSpeechId) {
-      window.clearInterval(resumeTimer);
-      return;
-    }
-
-    const chunk = chunks[index];
-    if (!chunk) {
-      window.clearInterval(resumeTimer);
-      onDone();
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(chunk);
-    if (voice) utterance.voice = voice;
-    utterance.lang = voice?.lang ?? "en-US";
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-    utterance.onstart = () => {
-      started = true;
-    };
-    utterance.onend = () => {
-      index += 1;
-      speakNext();
-    };
-    utterance.onerror = (event) => {
-      window.clearInterval(resumeTimer);
-      if (speechId === activeSpeechId) {
-        const reason = event.error ? `Speech failed: ${event.error}` : "Speech failed.";
-        onError(started ? reason : "Speech was blocked by the browser. Try clicking the button again.");
-        onDone();
-      }
-    };
-
-    window.speechSynthesis.speak(utterance);
-    window.speechSynthesis.resume();
-  };
-
-  speakNext();
-  return () => {
-    window.clearInterval(resumeTimer);
-    if (speechId === activeSpeechId) stopSpeech();
-  };
-}
-
-function waitForAudioStart(audio: HTMLAudioElement) {
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const cleanup = () => {
-      audio.removeEventListener("playing", onPlaying);
-      audio.removeEventListener("canplay", onCanPlay);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
-      window.clearTimeout(timer);
-    };
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve();
-    };
-    const fail = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error("Audio playback failed."));
-    };
-    const onPlaying = () => finish();
-    const onCanPlay = () => { if (!audio.paused) finish(); };
-    const onEnded = () => finish(); // short audio that ends before timeout = success
-    const onError = () => fail();
-    const timer = window.setTimeout(() => {
-      if (audio.ended || !audio.paused) finish();
-      else fail();
-    }, 2500);
-
-    audio.addEventListener("playing", onPlaying);
-    audio.addEventListener("canplay", onCanPlay);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-  });
-}
-
 const ArtifactChip = memo(function ArtifactChip({ artifact }: { artifact: ArtifactType }) {
   const { setArtifactPanel } = useUIStore();
   const Icon = ARTIFACT_ICONS[artifact.type];
@@ -275,9 +62,7 @@ interface MessageBubbleProps {
   message: Message;
   isStreaming?: boolean;
   streamingContent?: string;
-  onRegenerate?: () => void;
-  canRegenerate?: boolean;
-  onEdit?: (content: string) => void;
+  onEdit?: (messageId: string, newContent: string) => void;
 }
 
 /**
@@ -288,494 +73,360 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
   streamingContent = "",
-  onRegenerate,
-  canRegenerate = false,
   onEdit,
 }: MessageBubbleProps) {
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const cancelSpeechRef = useRef<(() => void) | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
-  const [docStatus, setDocStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [docError, setDocError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(message.content);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
   const isUser = message.role === "user";
   const displayContent = isStreaming ? streamingContent : message.content;
-  const parsedFiles = isUser ? parseMessageFileBlocks(displayContent) : { visibleText: displayContent, attachments: [] };
 
   useEffect(() => {
-    return () => {
-      cancelSpeechRef.current?.();
-      cancelSpeechRef.current = null;
-      stopAudioPlayback();
-    };
-  }, []);
+    if (isEditing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.selectionStart = editRef.current.value.length;
+    }
+  }, [isEditing]);
 
-  function copyMessage() {
-    navigator.clipboard.writeText(displayContent).then(() => {
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      setTimeout(() => setCopied(false), 2000);
     });
-  }
+  }, [message.content]);
 
-  function stopAudioPlayback() {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleSpeak = useCallback(async () => {
+    // Toggle off if already playing
+    if (isSpeaking && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsSpeaking(false);
+      return;
     }
-  }
 
-  function detectSpeechLanguage(text: string) {
-    if (/[\u0C00-\u0C7F]/.test(text)) return "te";
-    if (/[\u0900-\u097F]/.test(text)) return "hi";
-    if (/[\u0B80-\u0BFF]/.test(text)) return "ta";
-    return "en";
-  }
+    const cleaned = message.content.replace(/[#*`_~[\]()]/g, "").trim();
+    if (!cleaned) return;
 
-  async function fetchTtsBlob(text: string, attempt = 1): Promise<Blob> {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 45_000);
+    setIsSpeaking(true);
     try {
-      const res = await fetch("/api/chat/tts", {
+      const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // Cap at 2000 chars — stays under free-tier ElevenLabs quota and
-          // keeps single-request latency reasonable. Longer assistant
-          // messages will be truncated for speech only.
-          text: text.slice(0, 2000),
-          language: detectSpeechLanguage(text),
-        }),
-        signal: controller.signal,
+        body: JSON.stringify({ text: cleaned }),
       });
-      window.clearTimeout(timeoutId);
+
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        const err = new Error(data?.error ?? `TTS failed: ${res.status}`) as Error & { code?: string; status?: number };
-        err.code = data?.code;
-        err.status = res.status;
-        throw err;
+        // Fall back to Web Speech API if Groq fails (e.g. GROQ_API_KEY missing)
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+          const utt = new SpeechSynthesisUtterance(cleaned);
+          utt.onend = () => setIsSpeaking(false);
+          utt.onerror = () => setIsSpeaking(false);
+          window.speechSynthesis.speak(utt);
+          return;
+        }
+        setIsSpeaking(false);
+        return;
       }
-      return await res.blob();
-    } catch (err) {
-      window.clearTimeout(timeoutId);
-      const status = (err as { status?: number })?.status;
-      const code = (err as { code?: string })?.code;
-      // Do not retry on definitive failures (quota, auth, validation)
-      const isPermanent = status === 401 || status === 403 || status === 429 || code === "quota_exceeded";
-      if (attempt === 1 && !isPermanent) {
-        await new Promise((r) => window.setTimeout(r, 400));
-        return fetchTtsBlob(text, 2);
-      }
-      throw err;
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+        setIsSpeaking(false);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+        setIsSpeaking(false);
+      };
+      await audio.play();
+    } catch {
+      setIsSpeaking(false);
     }
-  }
+  }, [isSpeaking, message.content]);
 
-  async function playTtsAudio(text: string) {
-    const blob = await fetchTtsBlob(text);
-    const url = URL.createObjectURL(blob);
-    audioUrlRef.current = url;
-    const audio = new Audio(url);
-    audio.muted = false;
-    audio.volume = 1;
-    audio.preload = "auto";
-    audioRef.current = audio;
-    audio.onended = () => {
-      stopAudioPlayback();
-      setSpeaking(false);
-    };
-    audio.onerror = () => {
-      stopAudioPlayback();
-      setSpeaking(false);
-      setDocError("Audio playback failed. Try again.");
-    };
-    await audio.play();
-    await waitForAudioStart(audio);
-  }
-
-  async function speakMessage() {
-    if (speaking) {
-      stopAudioPlayback();
-      cancelSpeechRef.current?.();
-      cancelSpeechRef.current = null;
-      stopSpeech();
-      setSpeaking(false);
-      return;
-    }
-    const text = toPlainText(displayContent);
-    if (!text) {
-      setDocError("Nothing to read aloud.");
-      return;
-    }
-
-    setSpeaking(true);
-    setDocError(null);
-
+  const handleGoogleDocs = useCallback(async () => {
+    setDocsLoading(true);
+    setDocsError(null);
     try {
-      await playTtsAudio(text);
-    } catch (err) {
-      stopAudioPlayback();
-      setSpeaking(false);
-      const raw = err instanceof Error ? err.message : "";
-      const code = (err as { code?: string })?.code;
-      const status = (err as { status?: number })?.status;
-      console.warn("[read-aloud] TTS failed:", raw);
-      if (code === "quota_exceeded" || status === 429 || /quota|credits remaining|rate_limit/i.test(raw)) {
-        setDocError("Voice quota reached for today. Try again tomorrow.");
-      } else if (raw.includes("aborted") || raw.includes("AbortError")) {
-        setDocError("Voice timed out. Try again.");
-      } else if (status === 401 || status === 403) {
-        setDocError("Sign in to use voice.");
-      } else {
-        setDocError("Voice unavailable. Try again in a moment.");
-      }
-    }
-  }
-
-  async function sendToGoogleDocs() {
-    if (!displayContent.trim()) return;
-    setDocStatus("saving");
-    setDocError(null);
-    try {
-      const res = await fetch("/api/connectors/google-docs", {
+      const res = await fetch("/api/connectors/docs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: makeDocTitle(displayContent),
-          content: displayContent,
+          action: "create",
+          title: "Surya AI Response",
+          content: message.content,
         }),
       });
+      if (res.status === 401 || res.status === 403) {
+        setDocsError("Connect Google in Tools → Connectors first");
+        setTimeout(() => setDocsError(null), 4000);
+        return;
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Google Docs export failed");
-      setDocStatus("saved");
-      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
-      setTimeout(() => setDocStatus("idle"), 2500);
-    } catch (err) {
-      setDocStatus("error");
-      setDocError(err instanceof Error ? err.message : "Google Docs export failed");
+      if (data.url || data.documentUrl) {
+        window.open(data.url ?? data.documentUrl, "_blank", "noopener,noreferrer");
+      } else if (data.error) {
+        setDocsError(String(data.error).slice(0, 40));
+        setTimeout(() => setDocsError(null), 3000);
+      }
+    } catch {
+      setDocsError("Failed to create doc");
+      setTimeout(() => setDocsError(null), 3000);
+    } finally {
+      setDocsLoading(false);
     }
-  }
+  }, [message.content]);
 
-  function startEditing() {
-    setEditValue(displayContent);
-    setEditing(true);
-  }
-
-  function cancelEditing() {
-    setEditing(false);
-    setEditValue("");
-  }
-
-  function submitEdit() {
+  const handleEditSave = useCallback(() => {
     const trimmed = editValue.trim();
-    if (!trimmed || trimmed === displayContent.trim()) {
-      cancelEditing();
-      return;
+    if (trimmed && onEdit) {
+      onEdit(message.id, trimmed);
     }
-    onEdit?.(trimmed);
-    setEditing(false);
-  }
+    setIsEditing(false);
+  }, [editValue, message.id, onEdit]);
+
+  const handleEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleEditSave();
+    }
+    if (e.key === "Escape") {
+      setIsEditing(false);
+      setEditValue(message.content);
+    }
+  }, [handleEditSave, message.content]);
+
+  const actionBtnClass = "flex items-center justify-center w-7 h-7 rounded-md hover:bg-white/8 text-gray-500 hover:text-gray-300 transition-colors";
 
   return (
-    <div className={cn("group flex w-full mb-7 animate-fade-in", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full mb-7 animate-fade-in group", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
         <div
-          className="shrink-0 mr-3 mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shadow-sm bg-surya-500"
+          className="shrink-0 mr-3 mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shadow-sm"
+          style={{ background: "linear-gradient(135deg, #1A73E8, #4FC3F7)" }}
         >
           <Sparkles size={14} className="text-white" />
         </div>
       )}
-      <div
-        className={cn(
-          isUser
-            ? "max-w-[84%] rounded-[18px] rounded-br-md px-4 py-2.5 bg-[#303342] text-foreground shadow-sm"
-            : "max-w-3xl flex-1 text-foreground leading-relaxed"
-        )}
-      >
-        {/* Thinking block */}
-        {message.thinking && (
-          <div className="mb-3 border border-purple-800/40 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setThinkingOpen((o) => !o)}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-purple-400 hover:bg-purple-900/20 transition-colors"
-            >
-              <Brain size={12} />
-              <span>Extended thinking</span>
-              {thinkingOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </button>
-            {thinkingOpen && (
-              <div className="px-3 pb-3 text-xs text-purple-300/70 italic whitespace-pre-wrap font-mono leading-relaxed border-t border-purple-800/30 pt-2">
-                {message.thinking}
+
+      <div className={cn("flex flex-col", isUser ? "items-end max-w-[80%]" : "flex-1 max-w-3xl")}>
+        {/* Edit mode for user messages */}
+        {isUser && isEditing ? (
+          <div className="w-full">
+            <textarea
+              ref={editRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              rows={3}
+              className="w-full px-4 py-2.5 bg-surface-2 text-foreground text-[15px] leading-relaxed rounded-[18px_18px_4px_18px] border border-white/12 outline-none resize-none focus:border-surya-500/50"
+            />
+            <div className="flex gap-2 mt-1.5 justify-end">
+              <button
+                onClick={() => { setIsEditing(false); setEditValue(message.content); }}
+                className="px-3 py-1 text-xs text-gray-400 hover:text-white rounded-md hover:bg-white/8 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                className="px-3 py-1 text-xs bg-surya-500 hover:bg-surya-500/80 text-white rounded-md transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              isUser
+                ? "px-4 py-2.5 bg-surface-2 text-foreground text-[15px] leading-relaxed whitespace-pre-wrap"
+                : "text-foreground leading-relaxed"
+            )}
+            style={isUser ? { borderRadius: "18px 18px 4px 18px" } : undefined}
+          >
+            {/* Thinking block */}
+            {message.thinking && (
+              <div className="mb-3 border border-purple-800/40 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setThinkingOpen((o) => !o)}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-xs text-purple-400 hover:bg-purple-900/20 transition-colors"
+                >
+                  <Brain size={12} />
+                  <span>Extended thinking</span>
+                  {thinkingOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </button>
+                {thinkingOpen && (
+                  <div className="px-3 pb-3 text-xs text-purple-300/70 italic whitespace-pre-wrap font-mono leading-relaxed border-t border-purple-800/30 pt-2">
+                    {message.thinking}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Main content */}
+            {isUser ? (
+              <p>{displayContent}</p>
+            ) : (
+              <div className="prose prose-invert max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-transparent prose-pre:p-0">
+                {isStreaming ? (
+                  <StreamingText content={displayContent} isStreaming={isStreaming} />
+                ) : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight]}
+                    components={{
+                      code({ className, children, ...props }) {
+                        const isBlock = className?.includes("language-");
+                        const lang = className?.replace("language-", "") ?? "";
+                        const codeStr = String(children).replace(/\n$/, "");
+                        return isBlock ? (
+                          <div className="rounded-[10px] overflow-hidden border border-white/8 my-2.5 bg-surface-2 not-prose">
+                            <div className="flex items-center justify-between px-3.5 py-1.5 bg-surface-3 border-b border-white/8">
+                              <span className="font-mono text-[11px] text-gray-500">{lang || "code"}</span>
+                              <CopyCodeButton code={codeStr} />
+                            </div>
+                            <pre className="overflow-x-auto">
+                              <code
+                                className={cn("block font-mono text-[12.5px] leading-relaxed p-3.5", className)}
+                                {...props}
+                              >
+                                {children}
+                              </code>
+                            </pre>
+                          </div>
+                        ) : (
+                          <code
+                            className="bg-surface-2 rounded px-1 py-0.5 text-xs text-surya-accent font-mono"
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        );
+                      },
+                      pre({ children }) {
+                        return <>{children}</>;
+                      },
+                    }}
+                  >
+                    {displayContent}
+                  </ReactMarkdown>
+                )}
+              </div>
+            )}
+
+            {/* Inline media artifacts (image/video) */}
+            {!isUser && message.artifacts && message.artifacts.some((a) => a.type === "image" || a.type === "video") && (
+              <div className="mt-3 space-y-3">
+                {message.artifacts
+                  .filter((a) => a.type === "image" || a.type === "video")
+                  .map((a) =>
+                    a.type === "image" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={a.id}
+                        src={a.url ?? a.content}
+                        alt={a.title}
+                        className="rounded-xl border border-white/10 max-w-full max-h-[512px] object-contain bg-surface-2"
+                      />
+                    ) : (
+                      <video
+                        key={a.id}
+                        src={a.url ?? a.content}
+                        controls
+                        className="rounded-xl border border-white/10 max-w-full max-h-[512px] bg-surface-2"
+                      />
+                    )
+                  )}
+              </div>
+            )}
+
+            {/* Artifact chips (code/document/interactive only) */}
+            {!isUser && message.artifacts && message.artifacts.some((a) => a.type === "code" || a.type === "document" || a.type === "interactive") && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {message.artifacts
+                  .filter((a) => a.type === "code" || a.type === "document" || a.type === "interactive")
+                  .map((artifact) => (
+                    <ArtifactChip key={artifact.id} artifact={artifact} />
+                  ))}
+              </div>
+            )}
+
+            {/* Powered by Gemini badge */}
+            {!isUser && message.artifacts?.some(a => a.type === "document" && a.title.startsWith("Research:")) && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <Sparkles size={10} className="text-surya-accent" />
+                <span className="text-[10px] text-surya-accent font-medium tracking-wide">Powered by Gemini</span>
+              </div>
+            )}
+
+            {/* Citation cards strip */}
+            {!isUser && message.searchResults && message.searchResults.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-white/5">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-medium">Sources</p>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+                  {message.searchResults.map((result) => (
+                    <CitationCard key={result.index} result={result} compact />
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Main content */}
-        {isUser && editing ? (
-          <div className="min-w-[min(680px,78vw)]">
-            <textarea
-              value={editValue}
-              onChange={(event) => setEditValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  submitEdit();
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancelEditing();
-                }
-              }}
-              autoFocus
-              rows={Math.min(8, Math.max(2, editValue.split("\n").length))}
-              className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-[15px] leading-relaxed text-foreground outline-none focus:border-surya-500/50 focus:ring-[3px] focus:ring-surya-500/12"
-            />
-            <div className="mt-2 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelEditing}
-                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-gray-300 hover:bg-white/10"
-              >
-                <X size={13} />
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={submitEdit}
-                disabled={!editValue.trim()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Check size={13} />
-                Send
-              </button>
-            </div>
-          </div>
-        ) : isUser ? (
-          <div className="space-y-2">
-            {parsedFiles.attachments.map((attachment, index) => (
-              <DocumentAttachmentCard
-                key={`${attachment.name}-${index}`}
-                mode="message"
-                name={attachment.name}
-                content={attachment.content}
-                sizeBytes={attachment.sizeBytes}
-                lineCount={attachment.lineCount}
-                subtitle={attachment.truncated ? "Document · truncated" : "Document"}
-                className="bg-[#111f38]"
-              />
-            ))}
-            {parsedFiles.visibleText && (
-              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{parsedFiles.visibleText}</p>
-            )}
-          </div>
-        ) : (
-          <div className="prose prose-invert max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:bg-transparent prose-pre:p-0">
-            {isStreaming ? (
-              <StreamingText content={displayContent} isStreaming={isStreaming} />
-            ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={{
-                  code({ className, children, ...props }) {
-                    const isBlock = className?.includes("language-");
-                    const lang = className?.replace("language-", "") ?? "";
-                    const codeStr = String(children).replace(/\n$/, "");
-                    return isBlock ? (
-                      <div className="rounded-[10px] overflow-hidden border border-white/8 my-2.5 bg-surface-2 not-prose">
-                        <div className="flex items-center justify-between px-3.5 py-1.5 bg-surface-3 border-b border-white/8">
-                          <span className="font-mono text-[11px] text-gray-500">{lang || "code"}</span>
-                          <CopyCodeButton code={codeStr} />
-                        </div>
-                        <pre className="overflow-x-auto">
-                          <code
-                            className={cn("block font-mono text-[12.5px] leading-relaxed p-3.5", className)}
-                            {...props}
-                          >
-                            {children}
-                          </code>
-                        </pre>
-                      </div>
-                    ) : (
-                      <code
-                        className="bg-surface-2 rounded px-1 py-0.5 text-xs text-surya-accent font-mono"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                  pre({ children }) {
-                    return <>{children}</>;
-                  },
-                }}
-              >
-                {displayContent}
-              </ReactMarkdown>
-            )}
-          </div>
-        )}
-
-        {/* Inline media artifacts (image/video) */}
-        {!isUser && message.artifacts && message.artifacts.some((a) => a.type === "image" || a.type === "video") && (
-          <div className="mt-3 space-y-3">
-            {message.artifacts
-              .filter((a) => a.type === "image" || a.type === "video")
-              .map((a) =>
-                a.type === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={a.id}
-                    src={a.url ?? a.content}
-                    alt={a.title}
-                    className="rounded-xl border border-white/10 max-w-full max-h-[512px] object-contain bg-surface-2"
-                  />
-                ) : (
-                  <video
-                    key={a.id}
-                    src={a.url ?? a.content}
-                    controls
-                    className="rounded-xl border border-white/10 max-w-full max-h-[512px] bg-surface-2"
-                  />
-                )
-              )}
-          </div>
-        )}
-
-        {/* Artifact chips (code/document/interactive only) */}
-        {!isUser && message.artifacts && message.artifacts.some((a) => a.type === "code" || a.type === "document" || a.type === "interactive") && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            {message.artifacts
-              .filter((a) => a.type === "code" || a.type === "document" || a.type === "interactive")
-              .map((artifact) => (
-                <ArtifactChip key={artifact.id} artifact={artifact} />
-              ))}
-          </div>
-        )}
-
-        {/* Powered by Surya AI badge — shown for research document artifacts */}
-        {!isUser && message.artifacts?.some(a => a.type === "document" && a.title.startsWith("Research:")) && (
-          <div className="flex items-center gap-1.5 mt-2">
-            <Sparkles size={10} className="text-surya-accent" />
-            <span className="text-[10px] text-surya-accent font-medium tracking-wide">Powered by Surya AI</span>
-          </div>
-        )}
-
-        {/* Citation cards strip — shown for web search results */}
-        {!isUser && message.searchResults && message.searchResults.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-white/5">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-medium">Sources</p>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-              {message.searchResults.map((result) => (
-                <CitationCard key={result.index} result={result} compact />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!isUser && message.crewSteps && message.crewSteps.length > 0 && (
-          <div className="mt-3">
-            <CrewProgress events={message.crewSteps} isRunning={false} embedded />
-          </div>
-        )}
-
-        {!isStreaming && displayContent && !editing && (
-          <div
-            className={cn(
-              "mt-2 inline-flex flex-wrap items-center gap-1 rounded-lg border border-white/8 bg-surface-2/80 px-1 py-0.5 opacity-90 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100",
-              isUser ? "justify-end" : "justify-start"
-            )}
-          >
-            <button
-              type="button"
-              onClick={copyMessage}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
-              aria-label="Copy message"
-              title="Copy message"
-            >
+        {/* Action bar — user messages (copy + edit) on hover */}
+        {isUser && !isEditing && (
+          <div className="flex gap-0.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={handleCopy} className={actionBtnClass} title="Copy message">
               {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
             </button>
-            {isUser && onEdit && (
-              <button
-                type="button"
-                onClick={startEditing}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
-                aria-label="Edit message"
-                title="Edit message"
-              >
-                <Pencil size={13} />
+            {onEdit && (
+              <button onClick={() => { setIsEditing(true); setEditValue(message.content); }} className={actionBtnClass} title="Edit message">
+                <Edit3 size={13} />
               </button>
             )}
-            {!isUser && (
+          </div>
+        )}
+
+        {/* Action bar — assistant messages (copy + speak + Google Docs) */}
+        {!isUser && !isStreaming && (
+          <div className="flex items-center gap-0.5 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={handleCopy} className={actionBtnClass} title="Copy response">
+              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+            </button>
+            <button onClick={handleSpeak} className={actionBtnClass} title={isSpeaking ? "Stop speaking" : "Read aloud"}>
+              {isSpeaking ? <VolumeX size={13} className="text-surya-accent" /> : <Volume2 size={13} />}
+            </button>
+            <div className="relative">
               <button
-                type="button"
-                onClick={speakMessage}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
-                aria-label={speaking ? "Stop speaking" : "Speak message"}
-                title={speaking ? "Stop speaking" : "Speak message"}
+                onClick={handleGoogleDocs}
+                disabled={docsLoading}
+                className={cn(actionBtnClass, docsLoading && "cursor-not-allowed")}
+                title="Export to Google Docs"
               >
-                {speaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                {docsLoading ? <Loader2 size={13} className="animate-spin" /> : <FileOutput size={13} />}
               </button>
-            )}
-            {!isUser && (
-              <button
-                type="button"
-                onClick={sendToGoogleDocs}
-                disabled={docStatus === "saving"}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200 disabled:cursor-wait disabled:opacity-60"
-                aria-label="Put in Google Docs"
-                title="Put in Google Docs"
-              >
-                {docStatus === "saving" ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : docStatus === "saved" ? (
-                  <Check size={13} className="text-green-400" />
-                ) : (
-                  <FileText size={13} />
-                )}
-              </button>
-            )}
-            {!isUser && canRegenerate && onRegenerate && (
-              <button
-                type="button"
-                onClick={onRegenerate}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white/8 hover:text-gray-200"
-                aria-label="Regenerate"
-                title="Regenerate"
-              >
-                <RotateCcw size={13} />
-              </button>
-            )}
-            {docError && <span className="ml-1 text-[11px] text-red-400">{docError}</span>}
+              {docsError && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-surface-3 border border-white/10 rounded text-[11px] text-red-400 whitespace-nowrap z-10">
+                  {docsError}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 });
-
-function toPlainText(value: string) {
-  return value
-    .replace(/```[\s\S]*?```/g, " code block omitted ")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/[\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/gu, "")
-    .replace(/[#>*_~|]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function makeDocTitle(value: string) {
-  const firstLine =
-    value
-      .split("\n")
-      .map((line) => line.replace(/^#+\s*/, "").trim())
-      .find(Boolean) ?? "Surya AI Report";
-  return firstLine.slice(0, 90);
-}

@@ -1,27 +1,31 @@
 "use client";
 
-import { PanelLeft, Bug } from "lucide-react";
-import Image from "next/image";
+import { PanelLeft, Sun, Bug } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { usePathname } from "next/navigation";
 
+const BUG_REPORT_EMAIL = "pvshariharan324@gmail.com";
+
 function ReportBugButton() {
-  const href = `mailto:pvshariharan324@gmail.com?subject=${encodeURIComponent(
-    "Surya AI bug report"
-  )}&body=${encodeURIComponent(
-    "Hi PVS,\n\nI found an issue in Surya AI.\n\nWhere it happened:\n\nWhat went wrong:\n\nSteps to reproduce:\n1. \n2. \n3. \n\nScreenshot or extra details:\n"
-  )}`;
+  function handleClick() {
+    const subject = encodeURIComponent("Bug Report — Surya AI");
+    const body = encodeURIComponent(
+      `Hi PVS Hariharan,\n\nI found a bug on Surya AI:\n\n[Describe the bug here]\n\nSteps to reproduce:\n1. \n2. \n3. \n\nExpected behavior:\n\nActual behavior:\n\nBrowser / device:\n\nThanks!`
+    );
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${BUG_REPORT_EMAIL}&su=${subject}&body=${body}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   return (
-    <a
-      href={href}
+    <button
+      onClick={handleClick}
       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-white/[0.04] hover:bg-surface-2 border border-white/8 transition-all duration-150"
-      title="Report a bug"
+      title="Report a bug — opens Gmail"
     >
-      <Bug size={13} className="text-surya-400" />
+      <Bug size={12} className="text-red-400" />
       Report Bug
-    </a>
+    </button>
   );
 }
 
@@ -45,7 +49,7 @@ export function Header() {
 
       <div className="flex-1 flex items-center gap-2 min-w-0">
         {!activeTitle && (
-          <Image src="/logo.png" alt="Surya AI" width={20} height={20} className="rounded-[5px] shrink-0" />
+          <Sun size={18} className="text-surya-500 shrink-0" />
         )}
         <span className="text-[13.5px] font-medium text-gray-300 truncate">
           {activeTitle ?? "Surya AI"}

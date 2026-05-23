@@ -8,7 +8,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { MessageList } from "@/components/chat/MessageList";
 import { InputBar } from "@/components/chat/InputBar";
 import { ArtifactPanel } from "@/components/artifacts/ArtifactPanel";
-import { CrewProgress } from "@/components/chat/CrewProgress";
+import { ResearchProgress } from "@/components/chat/ResearchProgress";
 import { useUIStore } from "@/stores/uiStore";
 import type { Message } from "@/types/chat";
 
@@ -28,11 +28,12 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     stopStreaming,
     enableConnectors,
     setEnableConnectors,
+    enableWebSearch,
+    setEnableWebSearch,
     enableImageGen,
     setEnableImageGen,
     enableVideoGen,
     setEnableVideoGen,
-    crewEvents,
   } = useChat(projectId);
 
   const {
@@ -42,12 +43,11 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
     completedArtifact,
     error: researchError,
     resultConversationId,
-    councilUpdates,
     startResearch,
     reset: resetResearch,
   } = useResearch();
 
-  const { setMessages, setActiveConversation, activeConversationId, addMessage, messages: storeMessages } = useChatStore();
+  const { setMessages, setActiveConversation, activeConversationId, addMessage } = useChatStore();
   const { artifactPanelOpen } = useUIStore();
 
   useEffect(() => {
@@ -57,11 +57,7 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
       return;
     }
 
-    const currentMessagesLoaded =
-      conversationId === activeConversationId &&
-      storeMessages.length > 0 &&
-      storeMessages.every((message) => message.conversationId === conversationId);
-    if (currentMessagesLoaded) return;
+    if (conversationId === activeConversationId) return;
 
     setActiveConversation(conversationId);
 
@@ -108,22 +104,25 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
   }, [completedArtifact]);
 
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(26,115,232,0.055),transparent_34%),#0f1117]">
+    <div className="relative flex h-full overflow-hidden">
       {/* Chat column */}
-      <div className="relative z-10 flex flex-col flex-1 min-w-0 min-h-0 h-full">
+      <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full">
         <MessageList
           messages={messages}
           isStreaming={isStreaming}
           streamingContent={streamingContent}
           onSend={(content) => sendMessage(content, conversationId)}
-          onEditMessage={(messageId, content) => sendMessage(content, conversationId, { editMessageId: messageId })}
-          researchStage={researchStage}
-          researchDetail={researchDetail}
-          isResearching={isResearching}
-          councilUpdates={councilUpdates}
+          onEditMessage={(messageId, newContent) =>
+            sendMessage(newContent, conversationId, { editMessageId: messageId })
+          }
         />
 
-        <CrewProgress events={crewEvents} isRunning={isStreaming} />
+        {/* Deep Research progress — animated stages */}
+        <ResearchProgress
+          stage={researchStage}
+          detail={researchDetail}
+          isRunning={isResearching}
+        />
 
         {/* Research error */}
         {researchError && !isResearching && (
@@ -132,28 +131,20 @@ export function ChatInterface({ conversationId, projectId }: ChatInterfaceProps)
           </div>
         )}
 
-        <div className={`shrink-0 px-4 pb-5 pt-2 w-full ${artifactPanelOpen ? "max-w-2xl" : "max-w-3xl"} mx-auto`}>
+        <div className={`px-4 pb-6 pt-2 w-full ${artifactPanelOpen ? "max-w-2xl" : "max-w-3xl"} mx-auto`}>
           <InputBar
             onSend={(content) => sendMessage(content, conversationId)}
             onStop={stopStreaming}
             isStreaming={isStreaming || isResearching}
             enableConnectors={enableConnectors}
             onToggleConnectors={() => setEnableConnectors(!enableConnectors)}
+            enableWebSearch={enableWebSearch}
+            onToggleWebSearch={() => setEnableWebSearch(!enableWebSearch)}
             enableImageGen={enableImageGen}
             onToggleImageGen={() => setEnableImageGen(!enableImageGen)}
             enableVideoGen={enableVideoGen}
             onToggleVideoGen={() => setEnableVideoGen(!enableVideoGen)}
-            onDeepResearch={(question, councilModels) => {
-              addMessage({
-                id: crypto.randomUUID(),
-                conversationId: conversationId ?? "",
-                role: "user",
-                content: question,
-                artifacts: [],
-                createdAt: new Date().toISOString(),
-              });
-              startResearch(question, conversationId, projectId, councilModels);
-            }}
+            onDeepResearch={(question) => startResearch(question, conversationId, projectId)}
           />
         </div>
       </div>

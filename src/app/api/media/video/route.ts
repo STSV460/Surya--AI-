@@ -1,24 +1,15 @@
+export const runtime = "edge";
 
 import { after } from "next/server";
 import { auth } from "@/auth";
 import { generateHfSpacesVideo } from "@/lib/media/hfSpaces";
+import { generateKlingVideo, isKlingAvailable } from "@/lib/media/kling";
 import { uploadBlobToBucket } from "@/lib/media/storage";
 import { createAsset, updateAsset } from "@/lib/media/assets";
 import { aiLimiter } from "@/lib/rate-limit";
-import { parseJson, isResponse } from "@/lib/validation";
-import { z } from "zod";
 import type { VideoGenInput } from "@/types/media";
 
-export const maxDuration = 300;
-
-const videoSchema = z.object({
-  prompt: z.string().trim().min(1).max(4000),
-  durationSec: z.coerce.number().int().min(1).max(12).optional(),
-  mode: z.enum(["t2v", "i2v", "v2v"]).optional(),
-  imageUrl: z.string().trim().url().max(2048).optional(),
-  sourceVideoUrl: z.string().trim().url().max(2048).optional(),
-  aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional(),
-});
+export const maxDuration = 900;
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -33,28 +24,39 @@ export async function POST(req: Request) {
     );
   }
 
-  const body = await parseJson(req, videoSchema);
-  if (isResponse(body)) return body;
-  const input = body as VideoGenInput;
+  let body: VideoGenInput;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  if (!body.prompt) {
+    return Response.json({ error: "prompt is required" }, { status: 400 });
+  }
 
   const userId = session.user.id;
-  const provider = `hf-spaces/${process.env.HF_VIDEO_SPACE ?? "wan2-1-fast"}`;
+  const useKling = isKlingAvailable();
+  const provider = useKling
+    ? `kling/${process.env.KLING_MODEL ?? "kling-v2-master"}`
+    : `hf-spaces/${process.env.HF_VIDEO_SPACE ?? "wan2-1-fast"}`;
 
   const asset = await createAsset({
     userId,
     assetType: "video",
-    prompt: input.prompt,
+    prompt: body.prompt,
     provider,
-    durationSec: input.durationSec ?? 5,
+    durationSec: body.durationSec ?? 5,
     metadata: {
-      mode: input.mode ?? (input.imageUrl ? "i2v" : "t2v"),
-      aspectRatio: input.aspectRatio ?? "16:9",
+      mode: body.mode ?? (body.imageUrl ? "i2v" : "t2v"),
+      aspectRatio: body.aspectRatio ?? "16:9",
     },
   });
 
   after(async () => {
     try {
-      const { blob } = await generateHfSpacesVideo(input);
+      const { blob } = useKling
+        ? await generateKlingVideo(body)
+        : await generateHfSpacesVideo(body);
       const stored = await uploadBlobToBucket(userId, "video", blob);
       await updateAsset(asset.id, userId, { storageUrl: stored, status: "done" });
     } catch (err) {

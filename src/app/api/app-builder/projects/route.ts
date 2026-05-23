@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     : await parseJson(req, createAppProjectSchema);
   if (isResponse(body)) return body;
 
-  const id = crypto.randomUUID();
+  const id = crypto.crypto.randomUUID();
   const now = new Date().toISOString();
   const doc = {
     id,
