@@ -3,6 +3,7 @@ export const runtime = "edge";
 import { after } from "next/server";
 import { auth } from "@/auth";
 import { generateHfSpacesVideo } from "@/lib/media/hfSpaces";
+import { generateKlingVideo, isKlingAvailable } from "@/lib/media/kling";
 import { uploadBlobToBucket } from "@/lib/media/storage";
 import { createAsset, updateAsset } from "@/lib/media/assets";
 import { aiLimiter } from "@/lib/rate-limit";
@@ -34,7 +35,10 @@ export async function POST(req: Request) {
   }
 
   const userId = session.user.id;
-  const provider = `hf-spaces/${process.env.HF_VIDEO_SPACE ?? "wan2-1-fast"}`;
+  const useKling = isKlingAvailable();
+  const provider = useKling
+    ? `kling/${process.env.KLING_MODEL ?? "kling-v2-master"}`
+    : `hf-spaces/${process.env.HF_VIDEO_SPACE ?? "wan2-1-fast"}`;
 
   const asset = await createAsset({
     userId,
@@ -50,7 +54,9 @@ export async function POST(req: Request) {
 
   after(async () => {
     try {
-      const { blob } = await generateHfSpacesVideo(body);
+      const { blob } = useKling
+        ? await generateKlingVideo(body)
+        : await generateHfSpacesVideo(body);
       const stored = await uploadBlobToBucket(userId, "video", blob);
       await updateAsset(asset.id, userId, { storageUrl: stored, status: "done" });
     } catch (err) {

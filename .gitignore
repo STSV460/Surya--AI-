@@ -57,3 +57,4 @@ next-env.d.ts
 
 # OpenNext build output
 .open-next
+.env*.local
